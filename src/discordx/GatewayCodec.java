@@ -49,6 +49,8 @@ final class GatewayCodec {
         }
     }
 
+    static boolean mayBeReady(byte[] packet) { return contains(packet, READY); }
+
     private static boolean contains(byte[] packet, byte[] signal) {
         for (int i = 0; i <= packet.length - signal.length; i++) {
             int j = 0;

@@ -38,6 +38,7 @@ final class PluginScope implements PluginContext {
     @Override public Context application() { return manager.application; }
     @Override public Activity activity() { return manager.activity; }
     @Override public SharedPreferences preferences() { return manager.preferences(id()); }
+    @Override public discordx.api.Chat chat() { return new ChatBridge(this); }
     @Override public PluginUi ui() { return ui; }
 
     @Override public <T> Registration register(Hook<T> hook, T callback) {

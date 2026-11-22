@@ -154,7 +154,8 @@ public final class Bootstrap {
     }
 
     public static boolean onViewEvent(int id, String event, Object payload, Object completion) {
-        return (id >= 0x70000000 || "navigate".equals(event) || "appeared".equals(event))
+        return (id >= 0x70000000 || "navigate".equals(event) || "appeared".equals(event)
+            || "changeText".equals(event) || "press".equals(event) || "submit".equals(event))
             && module != null && module.onViewEvent(id, event, payload, completion);
     }
 }

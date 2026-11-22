@@ -39,9 +39,14 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
     private void runChecks() {
         try {
             manager = new PluginManager(target);
+            target.getSharedPreferences("discordx_plugin_manager", Context.MODE_PRIVATE).edit()
+                .putBoolean("enabled.hide_typing", true).putBoolean("bundled.hide_typing", true).commit();
             manager.initializeOnce();
+            check(manager.entries.get("ghost_mode").status == PluginManager.Status.RUNNING
+                    && manager.entries.get("hide_typing").status == PluginManager.Status.DISABLED,
+                "Existing outgoing typing preference migrates to GhostMode only");
             manager.disableAll();
-            check(manager.entries.size() == 15, "Fifteen independently packaged built-ins discovered");
+            check(manager.entries.size() == 16, "Sixteen independently packaged built-ins discovered");
             for (PluginManager.Entry entry : new java.util.ArrayList<>(manager.entries.values())) {
                 manager.toggle(entry);
                 check(entry.status == PluginManager.Status.RUNNING, "Loaded built-in: " + entry.pack.id + " " + entry.error);
@@ -111,12 +116,21 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
         String channel = api + "channels/123456789012345678/";
         switch (id) {
             case "hide_typing":
+                Object socket = new Object();
+                manager.opened(socket, 0, "wss://gateway.discord.gg");
+                String incoming = "{\"op\":0,\"s\":7,\"t\":\"TYPING_START\",\"d\":{}}";
+                org.json.JSONObject hidden = new org.json.JSONObject(new String(manager.frame(socket, 0, incoming.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8));
+                check(!"TYPING_START".equals(hidden.getString("t")) && hidden.getInt("s") == 7 && !manager.hooks.has(Hooks.HTTP_REQUEST),
+                    "HideTyping suppresses the incoming dispatch and preserves sequence and outgoing typing");
+                manager.closed(socket, 0);
+                break;
+            case "ghost_mode":
                 Hooks.Reply reply = manager.hooks.fold(Hooks.HTTP_REQUEST, (Hooks.Reply) null,
                     (filter, value) -> filter.apply(new Hooks.Request(channel + "typing", "POST")));
-                check(reply != null && reply.status == 204, "HideTyping handles the typing POST locally");
+                check(reply != null && reply.status == 204, "GhostMode handles the typing POST locally");
                 check(manager.hooks.fold(Hooks.HTTP_REQUEST, (Hooks.Reply) null,
                     (filter, value) -> filter.apply(new Hooks.Request(channel + "messages", "POST"))) == null,
-                    "HideTyping passes message sends through");
+                    "GhostMode passes message sends through");
                 break;
             case "no_profile_themes":
                 String profile = body(api + "users/123456789012345678/profile", "{\"user_profile\":{\"theme_colors\":[1,2],\"bio\":\"test\"}}");
@@ -165,7 +179,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             }
             PluginManager reloaded = new PluginManager(target);
             reloaded.initializeOnce();
-            check(reloaded.entries.size() == 15, "Installed package selection persists across manager restart");
+            check(reloaded.entries.size() == 16, "Installed package selection persists across manager restart");
             manager.main.postDelayed(() -> {
                 try { check(!manager.preferences(example.info.id).getBoolean("async", true), "Managed asynchronous callbacks cannot run after disable"); finishReport(null); }
                 catch (Throwable error) { finishReport(error); }

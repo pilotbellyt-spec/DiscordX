@@ -18,6 +18,7 @@ public interface PluginContext {
     Activity activity();
     SharedPreferences preferences();
     PluginUi ui();
+    Chat chat();
     <T> Registration register(Hook<T> hook, T callback);
     Registration onCleanup(Runnable cleanup);
     Registration runOnMain(Runnable action);

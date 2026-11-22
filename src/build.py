@@ -320,8 +320,12 @@ def compile_dex(build, android_jar, work, sources, dependencies=()):
     classpath = os.pathsep.join(str(path) for path in (android_jar, *dependencies))
     run("javac", "--release", "8", "-encoding", "UTF-8", "-Xlint:-options", "-cp", classpath, "-d", classes, *sources)
     extra_classpath = [part for dependency in dependencies for part in ("--classpath", dependency)]
+    inputs = work / "classes.jar"
+    with ZipFile(inputs, "w") as archive:
+        for item in sorted(classes.rglob("*.class")):
+            archive.write(item, item.relative_to(classes).as_posix())
     run(build / "d8.bat", "--min-api", "24", "--lib", android_jar, "--output", dex_dir,
-        *extra_classpath, *sorted(classes.rglob("*.class")))
+        *extra_classpath, inputs)
     return dex_dir / "classes.dex", classes
 
 

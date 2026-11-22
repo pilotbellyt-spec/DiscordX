@@ -103,8 +103,13 @@ final class PluginUiBridge implements PluginUi {
         final PluginScope scope;
         final String name, description;
         final Runnable action;
+        final Consumer<String> execute;
         Command(PluginScope scope, String name, String description, Runnable action) {
-            this.scope = scope; this.name = name; this.description = description; this.action = action;
+            this(scope, name, description, args -> action.run());
+        }
+        Command(PluginScope scope, String name, String description, Consumer<String> execute) {
+            this.scope = scope; this.name = name; this.description = description;
+            this.execute = execute; this.action = () -> execute.accept("");
         }
     }
 }

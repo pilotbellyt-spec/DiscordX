@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "ghost_mode",
+  "name": "GhostMode",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Suppress your outgoing typing notifications.",
+  "entrypoint": "discordx.plugins.ghost_mode.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "http_request"
+  ]
+}

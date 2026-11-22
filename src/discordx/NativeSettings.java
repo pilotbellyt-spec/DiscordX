@@ -156,6 +156,7 @@ final class NativeSettings {
                 rows.add(metadata);
                 ArrayList<Integer> actions = new ArrayList<>();
                 actions.add(ui.button("Reload", false, (event, payload) -> manager.reload(entry)));
+                if (manager.hasDocument(entry)) actions.add(ui.button("Reload ZIP", false, (event, payload) -> manager.reloadDocument(entry)));
                 if (!entry.bundled) actions.add(ui.button("Remove", false, (event, payload) -> {
                     manager.uninstall(entry); show("", "");
                 }));

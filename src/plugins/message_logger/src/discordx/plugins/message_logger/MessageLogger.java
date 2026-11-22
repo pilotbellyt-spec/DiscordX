@@ -239,6 +239,12 @@ public final class MessageLogger {
         return issuedMarkers;
     }
 
+    static synchronized Decoration history(String id) {
+        Message message = messages.get(id);
+        if (message == null || (!message.deleted && message.versions.isEmpty())) return null;
+        return new Decoration(new ArrayList<>(message.versions), message.deleted);
+    }
+
     static synchronized Decoration decoration(String marker) {
         int start = marker.indexOf(TOKEN_PREFIX);
         return start < 0 ? null : decorations.get(marker.substring(start, start + TOKEN_PREFIX.length() + 8));

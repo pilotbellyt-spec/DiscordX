@@ -42,6 +42,8 @@ public final class HttpBridgeTestInstrumentation extends Instrumentation {
             observerOnly();
             gzipAndPassthrough();
             filterFailure();
+            chatChecks();
+            cacheChecks();
             report.append("ALL PASSED\n");
         } catch (Throwable failure) {
             code = Activity.RESULT_CANCELED;
@@ -66,6 +68,99 @@ public final class HttpBridgeTestInstrumentation extends Instrumentation {
         entry.scope = scope;
         entry.status = PluginManager.Status.RUNNING;
         return scope;
+    }
+
+    private void chatChecks() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        runOnMainSync(() -> {
+            try {
+                PluginScope active = freshScope();
+                android.app.Activity fixtureActivity = new Activity() {
+                    { attachBaseContext(getTargetContext()); }
+                };
+                NativeDiscordUi ui = new NativeDiscordUi(fixtureActivity);
+                discordx.api.Chat chat = active.chat();
+                AtomicInteger presses = new AtomicInteger();
+                chat.button(discordx.api.Chat.Button.HEADER, "Fixture header", "res://ic_mana_puzzle_piece_plus", presses::incrementAndGet);
+                chat.button(discordx.api.Chat.Button.COMPOSER, "Fixture composer", "res://ic_mana_puzzle_piece_plus", presses::incrementAndGet);
+                String id = "123456789012345678";
+                chat.tint(message -> id.equals(message) ? 0xffdd5544 : null);
+                chat.accessory(discordx.api.Chat.Placement.CONTENT, message -> new discordx.api.Chat.Label("history " + message, 0xffbbbbbb));
+                chat.accessory(discordx.api.Chat.Placement.TIMESTAMP, message -> new discordx.api.Chat.Label("edited", 0xffbbbbbb));
+                discordx.api.Chat.LocalReply reply = chat.reply(id, "first");
+                reply.edit("private reply");
+                String[] args = {""};
+                chat.slashCommand("fixture", "Test command", value -> args[0] = value);
+                chat.beforeSend(text -> text.equals("block") ? null : text.replace("teh", "the"));
+                check(ChatSubmission.apply(manager, "/fixture one two") == null && args[0].equals("one two"), "Composer command takes arguments and consumes submission");
+                check("the".equals(ChatSubmission.apply(manager, "teh")) && ChatSubmission.apply(manager, "block") == null,
+                    "Send interceptors replace or cancel a draft");
+                check("/native".equals(ChatSubmission.apply(manager, "/native")), "Unregistered slash command passes through");
+
+                PhoenixRender adapter = new PhoenixRender(loader);
+                PhoenixRender.Builder host = adapter.addTo(null);
+                host.create(1, "view");
+                host.create(2, "view", "accessibilityId", "search.entry");
+                host.create(3, "view", "accessibilityId", "composer.expressions");
+                host.create(4, "view", "accessibilityId", "message.content:" + id);
+                host.create(5, "text", "accessibilityId", "message.timestamp:" + id);
+                host.create(6, "text", "accessibilityId", "message.author:" + id, "color", 0xffbbbbbbL);
+                host.children(1, 2, 3, 4, 5, 6);
+                host.children(4);
+                Object renderer = new Object();
+                PhoenixRender.Batch batch = adapter.read(ui.onBatch(renderer, host.build()));
+                boolean tinted = false;
+                java.util.HashSet<String> strings = new java.util.HashSet<>();
+                for (int i = 0; i < batch.count; i++) {
+                    if (batch.kind(i) == PhoenixRender.UPDATE && batch.id(i) == 6) {
+                        for (int k = batch.start(i); k < batch.start(i) + batch.size(i); k++)
+                            if (batch.key(k).equals("color") && batch.numbers[k] == 0xffdd5544L) tinted = true;
+                    }
+                    if (batch.kind(i) != PhoenixRender.CREATE) continue;
+                    for (int k = batch.start(i); k < batch.start(i) + batch.size(i); k++)
+                        if (batch.objects[k] instanceof String) strings.add((String)batch.objects[k]);
+                }
+                check(tinted, "Message tint targets the author in the host render transaction");
+                check(strings.contains("Fixture header") && strings.contains("Fixture composer") && ui.events.size() == 2,
+                    "Real render transaction contains both chat buttons and scoped press handlers");
+                for (NativeControls.Action action : ui.events.values()) action.run("press", null);
+                check(presses.get() == 2, "Both native button callbacks execute");
+                check(strings.contains("history " + id) && strings.contains("edited") && strings.stream().anyMatch(v -> v.endsWith("private reply")),
+                    "Content and timestamp accessories and edited local reply mount in a real render transaction");
+                reply.close();
+                check(manager.localReplies.isEmpty(), "Closing local reply removes it");
+                active.close();
+                check(manager.accessories.isEmpty() && manager.chatButtons.isEmpty() && manager.commands.isEmpty()
+                    && !manager.hooks.has(Hooks.BEFORE_SEND), "Stopping chat plugin releases all contributions");
+                ui.reset();
+            } catch (Throwable error) { failure.set(error); }
+        });
+        if (failure.get() != null) throw new AssertionError(failure.get());
+    }
+
+    private void cacheChecks() throws Exception {
+        java.io.File files = getTargetContext().getCacheDir();
+        String channel = "123456789012345678", message = "223456789012345678";
+        java.io.File dir = new java.io.File(files, "store/423456789012345678");
+        dir.mkdirs();
+        try (android.database.sqlite.SQLiteDatabase db = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(
+                new java.io.File(dir, "cache.sqlite"), null)) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v BLOB)");
+            db.execSQL("CREATE TABLE IF NOT EXISTS messages (k TEXT PRIMARY KEY, v BLOB)");
+            db.execSQL("INSERT OR REPLACE INTO meta VALUES (?, ?)", new Object[]{"selected",
+                new org.json.JSONObject().put("channel_id", channel).toString().getBytes(StandardCharsets.UTF_8)});
+            db.execSQL("INSERT OR REPLACE INTO messages VALUES (?, ?)", new Object[]{"00" + channel + ":00" + message,
+                new org.json.JSONObject().put("content", "fixture").toString().getBytes(StandardCharsets.UTF_8)});
+        }
+        ChatCache cache = new ChatCache(files);
+        check(channel.equals(cache.selectedChannel()) && "fixture".equals(cache.message(channel, message).getString("content")),
+            "Cache reads selected channel and exact channel/message key from read-only SQLite");
+        check(cache.query("SELECT k FROM messages WHERE k=?", new String[]{"00" + channel + ":00" + message}).length() == 1,
+            "Parameterized cache SELECT reads a fixture row");
+        boolean refused = false;
+        try { cache.query("DELETE FROM meta", new String[0]); } catch (IllegalArgumentException expected) { refused = true; }
+        check(refused && channel.equals(cache.selectedChannel()), "Cache rejects writes and preserves original rows");
+        check(cache.message(message, channel) == null, "Cache query rejects cross-channel matches");
     }
 
     private void intercept() throws Exception {

@@ -1,5 +1,6 @@
 package discordx.plugins.message_logger;
 
+import discordx.api.Chat;
 import discordx.api.Hooks;
 import discordx.api.PluginContext;
 import java.nio.charset.StandardCharsets;
@@ -21,10 +22,28 @@ public final class Plugin implements discordx.api.Plugin {
             @Override public void closed(Hooks.Connection connection) { MessageLogger.socketClosed(connection, 0); }
             @Override public byte[] frame(Hooks.Connection connection, byte[] bytes) { return bytes; }
         });
+        Chat chat = context.chat();
+        chat.tint(id -> {
+            MessageLogger.Decoration history = MessageLogger.history(id);
+            return history != null && history.deleted ? Integer.valueOf(0xfff07d83) : null;
+        });
+        chat.accessory(Chat.Placement.TIMESTAMP, id -> {
+            MessageLogger.Decoration history = MessageLogger.history(id);
+            if (history == null) return null;
+            return history.deleted ? new Chat.Label("Deleted", 0xffef777c) : new Chat.Label("Edited", 0xffb5adbf);
+        });
+        chat.accessory(Chat.Placement.CONTENT, id -> {
+            MessageLogger.Decoration history = MessageLogger.history(id);
+            return history == null || history.versions.isEmpty() ? null
+                : new Chat.Label(String.join("\n", history.versions), 0xffaaa7b3);
+        });
         context.register(Hooks.GATEWAY_JSON, (connection, event) -> {
             byte[] json = event.toString().getBytes(StandardCharsets.UTF_8);
             byte[] marked = MessageLogger.onFrame(connection, 0, json);
             if (marked == json) return event;
+            JSONObject data = event.optJSONObject("d");
+            String id = data == null ? "" : data.optString("id");
+            if (MessageLogger.snowflake(id)) context.runOnMain(() -> chat.redraw(id));
             try { return new JSONObject(new String(marked, StandardCharsets.UTF_8)); }
             catch (JSONException invalid) { return event; }
         });

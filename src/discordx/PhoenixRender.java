@@ -85,6 +85,19 @@ final class PhoenixRender {
         return (android.view.View) ((Map<?, ?>) rendererViews.get(renderer)).get(id);
     }
 
+    @SuppressWarnings("unchecked")
+    void changeDraft(Object renderer, android.view.View input, String text) throws ReflectiveOperationException {
+        // Deliver the same changeText notification as the input control before allowing submit.
+        Object dispatcher = renderer.getClass().getField("l").get(renderer);
+        Object state = input.getTag(0x7f0a0567);
+        if (state == null) throw new IllegalStateException("Composer view state is unavailable");
+        Class<?> payloadClass = payloadFields.getDeclaringClass();
+        Object payload = payloadClass.getConstructor().newInstance();
+        ((Map<String,Object>) payloadFields.get(payload)).put("text", text);
+        dispatcher.getClass().getMethod("f", state.getClass(), String.class, payloadClass, complete.getDeclaringClass())
+            .invoke(dispatcher, state, "changeText", payload, null);
+    }
+
     boolean containsText(Object value, String expected, int depth) throws IllegalAccessException {
         if (depth == 0 || value == null) return false;
         if (value instanceof String) return expected.equals(value);

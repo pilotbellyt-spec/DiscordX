@@ -29,6 +29,7 @@ final class NativeDiscordUi {
     private final Map<String, Long> colors = new HashMap<>();
     private final NativeSettings settingsPage;
     final PluginPages pluginPages;
+    private final ChatSurface chat = new ChatSurface(this);
     private int sequence = 0x70000000;
     private boolean submitting, loggedFailure;
     private PhoenixRender render;
@@ -153,6 +154,7 @@ final class NativeDiscordUi {
                 }, true);
                 insertions.get(scroll.id).subject = user;
             }
+            output = chat.render(batch, output, changed);
             return output == null ? incoming : output.build();
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             failure("Could not integrate the Phoenix render batch", error);
@@ -196,6 +198,7 @@ final class NativeDiscordUi {
                         String key = batch.key(p);
                         switch (key) {
                             case "accessibilityId": node.access = string(value); break;
+                            case "direction": node.direction = string(value); break;
                             case "nativeID": node.nativeId = string(value); break;
                             case "text":
                                 node.text = string(value);
@@ -212,6 +215,7 @@ final class NativeDiscordUi {
                         if ("image".equals(node.type) && node.uri.isEmpty() && value instanceof String
                                 && ((String) value).startsWith("https://") && AVATAR.matcher((String) value).matches()) node.uri = (String) value;
                     }
+                    chat.observe(node);
                     if (node.tag("settings-phone") || node.tag("settings-tablet")) settings.add(id);
                     if (node.tag("profile-sheet") || node.tag("profile-main-scroll")) profiles.add(id);
                     if (node.tag("member-since") || node.tag("member-since-discord") || "Member Since".equals(node.text)) membership.add(id);
@@ -226,6 +230,7 @@ final class NativeDiscordUi {
                     break;
                 case PhoenixRender.DELETE:
                     for (int dead : batch.children(i)) {
+                        chat.removed(dead);
                         Node removed = nodes.remove(dead);
                         if (removed != null) for (int child : removed.children) parents.remove(child, dead);
                         parents.remove(dead);
@@ -462,6 +467,23 @@ final class NativeDiscordUi {
         return null;
     }
 
+    Iterable<Node> visibleNodes() { return nodes.values(); }
+    Integer parentId(int id) { return parents.get(id); }
+    void changeDraft(android.view.View input, String text) throws ReflectiveOperationException {
+        render.changeDraft(renderer, input, text);
+    }
+    android.view.View nativeView(int id) throws IllegalAccessException { return render.view(renderer, id); }
+    PhoenixRender.Builder copyBatch(PhoenixRender.Batch batch) throws ReflectiveOperationException { return render.addTo(batch); }
+    void redrawChat(String id) {
+        chat.invalidate(id);
+        main.post(() -> {
+            if (renderer == null || activity.isDestroyed()) return;
+            try {
+                PhoenixRender.Builder draw = chat.render(null, null, java.util.Collections.emptySet());
+                if (draw != null) submit(draw);
+            } catch (ReflectiveOperationException error) { failure("Cannot redraw chat", error); }
+        });
+    }
     Node node(int id) { return nodes.get(id); }
     PhoenixRender.Builder builder() throws ReflectiveOperationException { return render.addTo(null); }
     String inputText(Object payload) throws IllegalAccessException { return render.inputText(payload); }
@@ -493,7 +515,16 @@ final class NativeDiscordUi {
 
     boolean event(int id, String event, Object payload, Object completion) {
         Node screen = nodes.get(id);
+        try {
+            if (chat.event(screen, event, payload)) {
+                try { render.complete(completion); }
+                catch (ReflectiveOperationException error) { failure("Cannot finish consumed composer event", error); }
+                return true;
+            }
+        } catch (ReflectiveOperationException error) { failure("Cannot handle chat event", error); }
         if (screen != null && ("navigate".equals(event) || "appeared".equals(event))) {
+            chat.navigated();
+            if (!DiscordX.manager.localReplies.isEmpty()) redrawChat(null);
             String tag = screen.access.isEmpty() ? screen.nativeId : screen.access;
             if (!tag.isEmpty()) DiscordX.manager.hooks.each(discordx.api.Hooks.NAVIGATION,
                 callback -> callback.accept(new discordx.api.Hooks.Navigation(event, tag)));
@@ -560,6 +591,7 @@ final class NativeDiscordUi {
         }
     }
     void reset() {
+        chat.reset();
         pluginPages.reset();
         events.clear();
         nodes.clear();
@@ -586,6 +618,7 @@ final class NativeDiscordUi {
                         discard(batch, insertion.ui);
                         iterator.remove();
                     }
+                    chat.invalidate(null);
                     Object updated = onBatch(renderer, batch.build());
                     render.submitBatch(renderer, updated);
                 }
@@ -651,7 +684,7 @@ final class NativeDiscordUi {
     static final class Node {
         final int id;
         final String type;
-        String access = "", nativeId = "", text = "", uri = "";
+        String direction = "", access = "", nativeId = "", text = "", uri = "";
         long color, background;
         int width, height, radius;
         int index = -1;

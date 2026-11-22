@@ -34,6 +34,11 @@ final class PluginManager {
     final ArrayList<PluginUiBridge.ProfileAction> profiles = new ArrayList<>();
     final ArrayList<PluginUiBridge.MessageAction> messageActions = new ArrayList<>();
     final ArrayList<PluginUiBridge.Command> commands = new ArrayList<>();
+    final ArrayList<ChatBridge.ButtonItem> chatButtons = new ArrayList<>();
+    final ArrayList<ChatBridge.Accessory> accessories = new ArrayList<>();
+    final ArrayList<ChatBridge.Tint> chatTints = new ArrayList<>();
+    final ArrayList<ChatBridge.Reply> localReplies = new ArrayList<>();
+    final ChatCache cache;
     private final SharedPreferences state;
     private final File directory;
     Activity activity;
@@ -46,6 +51,7 @@ final class PluginManager {
 
     PluginManager(Context context) {
         application = context.getApplicationContext();
+        cache = new ChatCache(application.getFilesDir());
         state = application.getSharedPreferences("discordx_plugin_manager", Context.MODE_PRIVATE);
         directory = new File(application.getFilesDir(), "discordx/plugins");
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("Cannot create plugin storage");
@@ -57,6 +63,11 @@ final class PluginManager {
         String interrupted = state.getString("starting", "");
         if (!interrupted.isEmpty()) state.edit().putBoolean("enabled." + interrupted, false)
             .putString("error." + interrupted, "Stopped after an interrupted startup. Reload to retry.").remove("starting").commit();
+        if (state.getBoolean("bundled.hide_typing", false) && !state.contains("package.ghost_mode")
+                && !state.contains("migrated.typing_split")) {
+            state.edit().putBoolean("enabled.ghost_mode", state.getBoolean("enabled.hide_typing", false))
+                .putBoolean("enabled.hide_typing", false).putBoolean("migrated.typing_split", true).commit();
+        }
         try (InputStream input = application.getAssets().open("discordx/plugins/index.json")) {
             JSONArray index = new JSONArray(new String(PluginPackage.bounded(input, 16 * 1024), java.nio.charset.StandardCharsets.UTF_8));
             for (int i = 0; i < index.length(); i++) {
@@ -160,7 +171,7 @@ final class PluginManager {
             connection = values == null ? null : values.get(id);
         }
         if (connection == null || bytes == null || bytes.length == 0) return bytes;
-        byte[] decoded = bytes.length <= 2 * 1024 * 1024 && (hooks.has(Hooks.GATEWAY_JSON) || !messageActions.isEmpty())
+        byte[] decoded = bytes.length <= 2 * 1024 * 1024 && (hooks.has(Hooks.GATEWAY_JSON) || !messageActions.isEmpty() || GatewayCodec.mayBeReady(bytes))
             ? GatewayCodec.transform(bytes, json -> jsonFrame(connection, json)) : bytes;
         return hooks.fold(Hooks.GATEWAY, decoded, (callback, value) -> {
             byte[] result = callback.frame(connection, value.clone());
@@ -173,6 +184,12 @@ final class PluginManager {
         if (bytes.length > 2 * 1024 * 1024) return bytes;
         try {
             org.json.JSONObject dispatch = new org.json.JSONObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+            if ("READY".equals(dispatch.optString("t"))) {
+                org.json.JSONObject data = dispatch.optJSONObject("d");
+                org.json.JSONObject user = data == null ? null : data.optJSONObject("user");
+                String id = user == null ? null : user.optString("id");
+                cache.account = Ids.snowflake(id) ? id : null;
+            }
             String original = dispatch.toString();
             if (!messageActions.isEmpty()) MessageIdentity.frame(dispatch);
             org.json.JSONObject updated = hooks.fold(Hooks.GATEWAY_JSON, dispatch, (callback, value) -> {
@@ -224,6 +241,7 @@ final class PluginManager {
         if (entry.bundled) throw new IllegalStateException("Bundled plugins can be disabled but not removed");
         stop(entry);
         entries.remove(entry.pack.id);
+        forgetDocument(entry.pack.id);
         state.edit().remove("package." + entry.pack.id).remove("enabled." + entry.pack.id)
             .remove("bundled." + entry.pack.id).remove("error." + entry.pack.id).commit();
         discordx.api.PluginInfo fallback = bundled.get(entry.pack.id);
@@ -236,6 +254,7 @@ final class PluginManager {
 
     void picker(Activity activity) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         activity.startActivityForResult(intent, IMPORT_REQUEST);
     }
 
@@ -243,6 +262,27 @@ final class PluginManager {
         if (request != IMPORT_REQUEST) return false;
         if (result != Activity.RESULT_OK || data == null || data.getData() == null) return true;
         Uri uri = data.getData();
+        readDocument(uri, null, (data.getFlags() & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0);
+        return true;
+    }
+
+    private void forgetDocument(String id) {
+        String source = state.getString("sourceUri." + id, null);
+        if (source == null) return;
+        state.edit().remove("sourceUri." + id).apply();
+        if (state.getAll().containsValue(source)) return;
+        try { application.getContentResolver().releasePersistableUriPermission(Uri.parse(source), Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+        catch (SecurityException ignored) { }
+    }
+
+    boolean hasDocument(Entry entry) { return state.contains("sourceUri." + entry.pack.id); }
+
+    void reloadDocument(Entry entry) {
+        String source = state.getString("sourceUri." + entry.pack.id, null);
+        if (source != null) readDocument(Uri.parse(source), entry, false);
+    }
+
+    private void readDocument(Uri uri, Entry expected, boolean persist) {
         submitImport(() -> {
             try {
                 PluginPackage pack;
@@ -250,11 +290,28 @@ final class PluginManager {
                     if (input == null) throw new IOException("Cannot open the selected ZIP");
                     pack = PluginPackage.read(input);
                 }
+                if (expected != null && !expected.pack.id.equals(pack.info.id)) throw new IOException("Plugin ID changed");
                 store(pack);
-                main.post(() -> install(pack));
-            } catch (Exception error) { main.post(() -> { notice = "Import failed: " + describe(error); changed(); }); }
+                main.post(() -> {
+                    if (expected != null && entries.get(pack.info.id) != expected) return;
+                    boolean running = expected != null && expected.status == Status.RUNNING;
+                    if (expected != null && expected.pack.hash.equals(pack.info.hash)) {
+                        if (running) reload(expected);
+                        return;
+                    }
+                    if (expected == null && !uri.toString().equals(state.getString("sourceUri." + pack.info.id, null)))
+                        forgetDocument(pack.info.id);
+                    install(pack);
+                    if (persist) {
+                        try {
+                            application.getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            state.edit().putString("sourceUri." + pack.info.id, uri.toString()).apply();
+                        } catch (SecurityException unsupported) { /* This provider grants one-time reads. */ }
+                    }
+                    if (running) { start(entries.get(pack.info.id)); changed(); }
+                });
+            } catch (Exception error) { main.post(() -> { notice = "ZIP import failed: " + describe(error); changed(); }); }
         });
-        return true;
     }
 
     private void submitImport(Runnable work) {
@@ -282,7 +339,7 @@ final class PluginManager {
                 PluginPackage pack;
                 try (InputStream input = connection.getInputStream()) { pack = PluginPackage.read(input); }
                 store(pack);
-                main.post(() -> install(pack));
+                main.post(() -> { forgetDocument(pack.info.id); install(pack); });
             } catch (Exception error) { main.post(() -> { notice = "Download failed: " + describe(error); changed(); }); }
             finally { if (connection != null) connection.disconnect(); }
         });

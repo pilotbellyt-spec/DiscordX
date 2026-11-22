@@ -22,7 +22,8 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **Quick Jump** opens a pasted Discord channel, message, or profile link through Discord's Android route handling. Open its settings page to enter the link.
 - **Screen Share Privacy** sets Android's `FLAG_SECURE` on the main window to restrict screenshots and screen sharing while enabled.
 - **Copy Profile Link** adds a copy action to supported profiles with a verified user ID.
-- **HideTyping** suppresses outgoing typing notifications.
+- **HideTyping** hides other users’ typing indicators.
+- **GhostMode** suppresses your outgoing typing notifications. An existing enabled HideTyping 1.x bundled installation migrates to GhostMode.
 - **DeArrow** replaces eligible YouTube embed titles and thumbnails with community branding. It sends video IDs to DeArrow. Additional uncached videos in a batch may update when the messages load again.
 - **MessageLatency** shows the delay between a message nonce and its server ID for delays of 2 to under 120 seconds. Messages without a timestamp-bearing nonce have no label.
 - **NoProfileThemes** removes profile accent and theme colors locally.

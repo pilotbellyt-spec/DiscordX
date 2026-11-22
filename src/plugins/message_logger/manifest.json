@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "message_logger",
   "name": "MessageLogger",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "DiscordX",
   "description": "Retain observed edits and single deletions for this session.",
   "entrypoint": "discordx.plugins.message_logger.Plugin",
@@ -18,6 +18,7 @@
     "http_request",
     "display_text",
     "composer_text",
-    "clipboard"
+    "clipboard",
+    "chat.accessories"
   ]
 }

@@ -92,13 +92,37 @@ Use `textTokenPrefix()` when adding local display markers. The host retains toke
 - `settings(title, page)` adds an entry to the plugin's details page.
 - `profileAction(title, action)` adds an action on supported profiles with a verified user ID.
 - `messageAction(title, action)` adds an action to a verified message's text-selection menu.
-- `command(name, description, action)` adds an entry to the manager's command list.
+- `command(name, description, action)` registers an action in the manager and under its name in the composer.
 - `open(title, page)` opens a host-rendered page.
 - `androidModal(content)` opens a managed Android modal.
 
 A `Page` builds controls through `text`, `heading`, `secondary`, `image`, `input`, `button`, and `toggle`. Use `row`, `column`, `card`, and `divider` to group controls. Layout groups take a consumer of the same controls interface. Declare `ui.layouts` when using these methods. Keep edit state in the plugin and call `refresh()` after asynchronous results. Message actions receive message/channel/author IDs, content, and selected text. They appear only where the host can verify message identity.
 
 Create, refresh, and close UI on the main thread. Use `runOnMain` from background work. UI registration cleanup marshals removal to the main thread. Disabling deactivates callbacks before invoking `stop()` and drains owned resources afterward. Closing a registration removes its contribution. The API does not expose Phoenix's obfuscated renderer classes.
+
+## Extend chat
+
+Use `context.chat()` from the main thread for UI registrations. List the capabilities you use in the manifest.
+
+| Capability | API |
+| --- | --- |
+| `chat.buttons` | `button(HEADER or COMPOSER, title, resourceIcon, pressed)` places an accessible button beside search or the emoji picker. |
+| `chat.commands` | `slashCommand(name, description, args -> ...)` consumes a local command on submission. Matching commands appear as you type. |
+| `before_send` | `beforeSend(text -> ...)` returns the outgoing draft. Return `null` to cancel. Local commands execute first. |
+| `chat.accessories` | `accessory(CONTENT or TIMESTAMP, messageId -> label)` returns a colored label or `null`. `redraw(messageId)` refreshes that message. `tint(id -> argb)` colors its author and content, and restores host colors when removed. |
+| `chat.local_replies` | `reply(messageId, text)` displays a local reply beneath a message. |
+| `chat.local_messages` | `localMessage(channelId, text)` displays a local message above the selected channel's composer. |
+| `chat.cache` | `selectedChannel()`, `cachedMessage(channelId, messageId)`, and `queryCache(select, arguments...)` read the account's Phoenix SQLite cache. Call these on a worker thread. |
+
+A local message or reply returns a handle with `edit(text)` and `close()`. These entries live for the plugin session. Cache queries bind string parameters to `?`, return at most 500 rows and 1 MiB of JSON, and encode BLOB columns as Base64. An empty cache or ambiguous account selection returns no records.
+
+```java
+Chat chat = context.chat();
+chat.slashCommand("echo", "Show text locally", args ->
+    context.runAsync(chat::selectedChannel, channel -> {
+        if (channel != null) chat.localMessage(channel, args);
+    }, error -> android.util.Log.w("Echo", "Channel lookup failed", error)));
+```
 
 ## Package Kotlin or an existing DEX
 
@@ -115,6 +139,8 @@ Only one `classes.dex` is supported. Keep output within package limits. This for
 ## Update and test
 
 Import a ZIP with the same ID to replace the selected package. The runtime stops the old instance and leaves the replacement disabled. It retains the previous selection for rollback if replacement startup fails. Reload creates a fresh instance. Removing an imported replacement can reveal the bundled package with the same ID.
+
+For Java development, run `python src/build_plugins.py <plugin-directory> --watch --out <synced-directory>`. The watcher compiles the SDK once and replaces the ZIP after each successful build. Import the ZIP once through an Android document provider that supports persistent reads. Choose **Reload ZIP** in plugin details after syncing. DiscordX validates the replacement ID and restarts it if the previous version was enabled.
 
 Build the verification app with `python src/verify_plugins.py`. Run it on an Android test device with `--adb <serial>`. Also exercise the plugin's actual Phoenix screen and external services. Compilation and package validation do not prove UI integration.
 

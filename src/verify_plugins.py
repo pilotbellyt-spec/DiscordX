@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -28,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sdk', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'Android/Sdk')
     parser.add_argument('--out', type=Path, default=build.ROOT / 'dist/plugin-verification')
+    parser.add_argument('--bundle', type=Path, help='Verify the exact plugin ZIPs from a built base APK')
     parser.add_argument('--adb', help='ADB serial; installs and clears only discordx.verification test-app data')
     parser.add_argument('--user', help='Android user ID for the test app; defaults to current user')
     args = parser.parse_args()
@@ -38,7 +40,18 @@ def main():
         work = Path(temporary)
         assets = work / 'assets'
         plugins = assets / 'discordx/plugins'
-        build_plugins(args.sdk, plugins, work / 'builtins')
+        if args.bundle:
+            with ZipFile(args.bundle) as bundle:
+                prefix = 'assets/discordx/plugins/'
+                index = bundle.read(prefix + 'index.json')
+                plugins.mkdir(parents=True)
+                (plugins / 'index.json').write_bytes(index)
+                for name in json.loads(index):
+                    if not re.fullmatch(r'[a-z][a-z0-9_.-]+\.zip', name):
+                        raise ValueError('Invalid bundled plugin name')
+                    (plugins / name).write_bytes(bundle.read(prefix + name))
+        else:
+            build_plugins(args.sdk, plugins, work / 'builtins')
         tests = assets / 'tests'
         tests.mkdir(parents=True)
         build_plugins(args.sdk, tests, work / 'external', [build.ROOT / 'examples/clipboard_prefix'])

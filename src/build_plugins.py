@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
@@ -63,15 +64,48 @@ def build_plugins(sdk, output, work, directories=None):
     return index, packages
 
 
+def watch_plugin(sdk, directory, output):
+    """Keep one plugin ZIP up to date for a linked document or a synced folder."""
+    with TemporaryDirectory(prefix='dx-watch-sdk-') as sdk_work:
+        sdk_jar = build_api(sdk, Path(sdk_work), Path(sdk_work))
+        last = None
+        while True:
+            files = sorted(path for name in ('manifest.json', 'src', 'assets')
+                           for path in ([directory / name] if name == 'manifest.json' else (directory / name).rglob('*'))
+                           if path.is_file())
+            current = [(path, path.stat().st_mtime_ns, path.stat().st_size) for path in files]
+            if current != last:
+                last = current
+                try:
+                    with TemporaryDirectory(prefix='dx-watch-build-') as work:
+                        dex, _ = compile_dex(sdk / 'build-tools/36.1.0', sdk / 'platforms/android-36/android.jar',
+                                             Path(work), sorted((directory / 'src').rglob('*.java')), (sdk_jar,))
+                        with TemporaryDirectory(dir=output) as staging:
+                            temp = Path(staging) / 'package.zip'
+                            ident = package_plugin(directory, dex, temp)
+                            if not re.fullmatch(r'[a-z][a-z0-9_.-]{1,63}', ident):
+                                raise ValueError('Invalid plugin ID')
+                            temp.replace(output / (ident + '.zip'))
+                            print('Updated', output / (ident + '.zip'), flush=True)
+                except Exception as error:
+                    print('Build failed:', error, flush=True)
+            time.sleep(0.5)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('plugins', nargs='*', type=Path, help='Plugin source directories; defaults to all bundled plugins')
     parser.add_argument('--sdk', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'Android/Sdk')
     parser.add_argument('--out', type=Path, default=ROOT / 'dist/plugins')
     parser.add_argument('--dex', type=Path, help='Package an already compiled Java/Kotlin DEX for one source manifest')
+    parser.add_argument('--watch', action='store_true', help='Recompile one plugin on source changes')
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    if args.dex:
+    if args.watch:
+        if args.dex or len(args.plugins) != 1: parser.error('--watch requires one source folder')
+        try: watch_plugin(args.sdk, args.plugins[0], args.out)
+        except KeyboardInterrupt: pass
+    elif args.dex:
         if len(args.plugins) != 1: parser.error('--dex requires exactly one plugin directory')
         ident = json.loads((args.plugins[0] / 'manifest.json').read_text(encoding='utf-8'))['id']
         if not re.fullmatch(r'[a-z][a-z0-9_.-]{1,63}', ident): parser.error('Invalid plugin ID')
