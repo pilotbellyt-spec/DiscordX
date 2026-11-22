@@ -101,9 +101,7 @@ final class PluginUiBridge implements PluginUi {
         final String name, description;
         final Runnable action;
         final Consumer<String> execute;
-        final boolean hasForm;
-        Command(PluginScope scope, String name, String description, Consumer<String> execute, boolean hasForm) {
-            this.hasForm = hasForm;
+        Command(PluginScope scope, String name, String description, Consumer<String> execute) {
             this.scope = scope; this.name = name; this.description = description;
             this.execute = execute; this.action = () -> execute.accept("");
         }

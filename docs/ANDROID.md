@@ -19,7 +19,7 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **Clean Copied Links** applies the same cleaner to copied single URLs. Other copied text is preserved.
 - **Open in Browser** sends eligible HTTP/HTTPS links to the default browser. Recognized authentication routes retain the original intent handling.
 - **Reduce Motion** combines its preference with Android's system preference. Reopen the window if Phoenix cached its motion setting.
-- **Quick Jump** opens a pasted Discord channel, message, or profile link through Discord's Android route handling. Select **/quick-jump** in the slash-command picker, enter the **link**, and choose **Run**. Its settings page also accepts a link.
+- **Quick Jump** opens a pasted Discord channel, message, or profile link through Discord's Android route handling. Open the plugin’s settings and paste the link.
 - **Screen Share Privacy** sets Android's `FLAG_SECURE` on the main window to restrict screenshots and screen sharing while enabled.
 - **Copy Profile Link** adds a copy action to supported profiles with a verified user ID.
 - **HideTyping** hides other usersâ€™ typing indicators.

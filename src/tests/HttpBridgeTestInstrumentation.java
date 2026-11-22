@@ -146,13 +146,14 @@ public final class HttpBridgeTestInstrumentation extends Instrumentation {
                 PhoenixRender.Builder refresh = adapter.addTo(null);
                 refresh.children(12, 13);
                 PhoenixRender.Batch filtered = adapter.read(ui.onBatch(renderer, refresh.build()));
-                boolean insidePicker = false;
+                boolean foundNativeRow = false;
                 for (int i = 0; i < filtered.count; i++) {
                     if (filtered.kind(i) != PhoenixRender.CHILDREN || filtered.id(i) != 12) continue;
                     int[] children = filtered.children(i);
-                    if (children.length == 2 && children[1] == 13 && ui.events.containsKey(children[0])) insidePicker = true;
+                    check(java.util.Arrays.equals(children, new int[]{13}), "Discord owns the picker result list");
+                    foundNativeRow = true;
                 }
-                check(insidePicker, "Matching local command is inside the native results list alongside the original row");
+                check(foundNativeRow, "Original picker row reaches the renderer");
                 reply.close();
                 check(manager.localReplies.isEmpty(), "Closing local reply removes it");
                 active.close();

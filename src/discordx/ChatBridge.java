@@ -39,18 +39,18 @@ final class ChatBridge implements Chat {
         Tint(ChatBridge owner, Function<String,Integer> render) { this.owner = owner; this.render = render; }
     }
     @Override public Registration slashCommand(String name, String description, Consumer<String> execute) {
-        return registerCommand(name, description, Objects.requireNonNull(execute), false);
+        return registerCommand(name, description, Objects.requireNonNull(execute));
     }
     @Override public Registration slashCommand(String name, String description, java.util.List<Option<?>> options,
                                               Consumer<Arguments> execute) {
         CommandOptions form = new CommandOptions(scope, name, options, execute);
-        return registerCommand(name, description, form::submit, true);
+        return registerCommand(name, description, form::submit);
     }
-    private Registration registerCommand(String name, String description, Consumer<String> execute, boolean hasForm) {
+    private Registration registerCommand(String name, String description, Consumer<String> execute) {
         main();
         if (name == null || !name.matches("[a-z][a-z0-9_-]{0,31}") || scope.manager.commands.stream().anyMatch(item -> item.name.equals(name)))
             throw new IllegalArgumentException("Invalid or duplicate command name");
-        PluginUiBridge.Command item = new PluginUiBridge.Command(scope, name, description, execute, hasForm);
+        PluginUiBridge.Command item = new PluginUiBridge.Command(scope, name, description, execute);
         return add(scope.manager.commands, item);
     }
     @Override public Registration beforeSend(Function<String,String> filter) {

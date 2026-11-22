@@ -107,14 +107,14 @@ Use `context.chat()` from the main thread for UI registrations. List the capabil
 | Capability | API |
 | --- | --- |
 | `chat.buttons` | `button(HEADER or COMPOSER, title, resourceIcon, pressed)` places an accessible button beside search or the emoji picker. |
-| `chat.commands` | `slashCommand(name, description, args -> ...)` consumes a local command on submission. Matching commands appear in the Phoenix slash-command picker. |
+| `chat.commands` | `slashCommand(name, description, args -> ...)` consumes a local command on submission. This local callback does not register a Discord application command. |
 | `before_send` | `beforeSend(text -> ...)` returns the outgoing draft. Return `null` to cancel. Local commands execute first. |
 | `chat.accessories` | `accessory(CONTENT or TIMESTAMP, messageId -> label)` returns a colored label or `null`. `redraw(messageId)` refreshes that message. `tint(id -> argb)` colors its author and content, and restores host colors when removed. |
 | `chat.local_replies` | `reply(messageId, text)` displays a local reply beneath a message. |
 | `chat.local_messages` | `localMessage(channelId, text)` displays a local message above the selected channel's composer. |
 | `chat.cache` | `selectedChannel()`, `cachedMessage(channelId, messageId)`, and `queryCache(select, arguments...)` read the account's Phoenix SQLite cache. Call these on a worker thread. |
 
-Declare `chat.command_options` for the `slashCommand(name, description, options, execute)` overload. Each `Chat.Option<T>` has a name, a required flag, and a parser. Throw `IllegalArgumentException` with a field error for invalid input. Selecting the command opens its fields locally. A single-option command also accepts `/name value` directly. Read a parsed value with `args.get(option)`.
+Declare `chat.command_options` for the `slashCommand(name, description, options, execute)` overload. Each `Chat.Option<T>` has a name, a required flag, and a parser. Throw `IllegalArgumentException` with a field error for invalid input. The plugin manager can open a local form for these fields. A single-option command also accepts `/name value` directly. Read a parsed value with `args.get(option)`.
 
 Both command APIs share one namespace. Names must match `[a-z][a-z0-9_-]{0,31}`. A duplicate registration throws `IllegalArgumentException`. Closing the registration releases the name.
 
