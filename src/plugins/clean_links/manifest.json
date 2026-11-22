@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "clean_links",
+  "name": "Clean Links",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Remove tracking parameters from opened web links.",
+  "entrypoint": "discordx.plugins.clean_links.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "open_link"
+  ]
+}

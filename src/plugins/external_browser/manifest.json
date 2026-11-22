@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "external_browser",
+  "name": "Open in Browser",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Open ordinary web links in the default browser.",
+  "entrypoint": "discordx.plugins.external_browser.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "browser_intent"
+  ]
+}

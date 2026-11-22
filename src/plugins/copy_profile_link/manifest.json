@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "copy_profile_link",
+  "name": "Copy Profile Link",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Copy the verified profile URL.",
+  "entrypoint": "discordx.plugins.copy_profile_link.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "ui.profile_actions"
+  ]
+}

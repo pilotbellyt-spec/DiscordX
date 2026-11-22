@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "review_db",
+  "name": "ReviewDB",
+  "version": "1.0.1",
+  "author": "DiscordX",
+  "description": "Read and write public profile reviews.",
+  "entrypoint": "discordx.plugins.review_db.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "ui.profile_actions",
+    "ui.pages",
+    "ui.android_modal",
+    "ui.layouts"
+  ]
+}

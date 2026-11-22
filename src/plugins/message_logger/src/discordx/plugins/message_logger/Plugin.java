@@ -1,0 +1,57 @@
+package discordx.plugins.message_logger;
+
+import discordx.api.Hooks;
+import discordx.api.PluginContext;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public final class Plugin implements discordx.api.Plugin {
+    private static final Pattern MESSAGES = Pattern.compile("https://(?:(?:canary|ptb)\\.)?discord\\.com/api/v[0-9]+/channels/([1-9][0-9]{16,19})/messages(?:\\?[^#]*)?");
+    private static final Pattern MESSAGE = Pattern.compile("https://(?:(?:canary|ptb)\\.)?discord\\.com/api/v[0-9]+/channels/([1-9][0-9]{16,19})/messages/([1-9][0-9]{16,19})(?:\\?[^#]*)?");
+
+    @Override public void start(PluginContext context) {
+        MessageLogger.usePrefix(context.textTokenPrefix());
+        MessageLogger.setEnabled(true);
+        context.register(Hooks.GATEWAY, new Hooks.Gateway() {
+            @Override public void opened(Hooks.Connection connection) { MessageLogger.socketOpened(connection, 0, connection.url); }
+            @Override public void closed(Hooks.Connection connection) { MessageLogger.socketClosed(connection, 0); }
+            @Override public byte[] frame(Hooks.Connection connection, byte[] bytes) { return bytes; }
+        });
+        context.register(Hooks.GATEWAY_JSON, (connection, event) -> {
+            byte[] json = event.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] marked = MessageLogger.onFrame(connection, 0, json);
+            if (marked == json) return event;
+            try { return new JSONObject(new String(marked, StandardCharsets.UTF_8)); }
+            catch (JSONException invalid) { return event; }
+        });
+        context.register(Hooks.HTTP_RESPONSE, Plugin::received);
+        context.register(Hooks.HTTP_REQUEST, request -> {
+            if ("DELETE".equals(request.method) && request.url != null) {
+                Matcher message = MESSAGE.matcher(request.url);
+                if (message.matches()) MessageLogger.deleting(message.group(2), message.group(1));
+            }
+            return null;
+        });
+        context.register(Hooks.DISPLAY_TEXT, MessageHistoryText::render);
+        context.register(Hooks.COMPOSER_TEXT, MessageHistoryText::clean);
+        context.register(Hooks.CLIPBOARD, MessageHistoryText::clean);
+    }
+
+    private static void received(String url, byte[] bytes) {
+        if (url == null || bytes == null || bytes.length > 1024 * 1024) return;
+        Matcher route = MESSAGES.matcher(url);
+        if (!route.matches()) return;
+        try {
+            JSONArray messages = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
+            for (int i = 0; i < messages.length(); i++) {
+                JSONObject message = messages.optJSONObject(i);
+                if (message != null && route.group(1).equals(message.optString("channel_id"))) MessageLogger.remember(message, route.group(1));
+            }
+        } catch (JSONException invalid) { /* Leave unrelated responses unchanged. */ }
+    }
+    @Override public void stop() { MessageLogger.setEnabled(false); }
+}

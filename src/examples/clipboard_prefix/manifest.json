@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "example.clipboard_prefix",
+  "name": "Clipboard Prefix Example",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Demonstrates a hook, settings page, and automatic cleanup.",
+  "entrypoint": "example.clipboard.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [356207]
+}

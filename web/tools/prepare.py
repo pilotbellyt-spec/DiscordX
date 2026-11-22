@@ -23,11 +23,19 @@ with ZipFile(args.original) as original, ZipFile(args.patched) as patched:
     source = original.read('classes.dex')
     host = patched.read('classes.dex')
     (assets / 'host.patch').write_bytes(create_patch(source, host))
+    plugin_files = []
+    for entry in patched.namelist():
+        if entry.startswith('assets/discordx/plugins/') and not entry.endswith('/'):
+            name = entry.removeprefix('assets/discordx/')
+            destination = assets / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(patched.read(entry))
+            plugin_files.append(name)
     for name, entry in [('bootstrap.dex', 'classes4.dex'), ('module.dex', 'assets/discordx/module.dex')]:
         (assets / name).write_bytes(patched.read(entry))
 manifest = {'version': 356207, 'sourceDexSha256': hashlib.sha256(source).hexdigest(),
             'hostDexSha256': hashlib.sha256(host).hexdigest()}
-manifest['files'] = {name: hashlib.sha256((assets / name).read_bytes()).hexdigest() for name in ['host.patch', 'bootstrap.dex', 'module.dex']}
+manifest['files'] = {name: hashlib.sha256((assets / name).read_bytes()).hexdigest() for name in ['host.patch', 'bootstrap.dex', 'module.dex', *sorted(plugin_files)]}
 (assets / 'manifest.json').write_text(json.dumps(manifest, indent=2))
 (assets / 'host.dex').unlink(missing_ok=True)
 # Deliberately separate from the user's installed-app keystore. This public key

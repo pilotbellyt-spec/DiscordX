@@ -22,10 +22,12 @@ final class NativeControls {
         this.batch = batch;
         boolean dark = owner.isDark();
         background = owner.color("background", dark ? 0xff1a1a1e : 0xfff8f8f9);
-        card = owner.color("card", dark ? 0xff27272d : 0xffffffff);
+        long capturedCard = owner.color("card", dark ? 0xff27272d : 0xffffffff);
+        card = capturedCard == background || (capturedCard >>> 24) < 128
+            ? color(dark ? 0xff24262d : 0xffffffff) : capturedCard;
         text = owner.color("text", dark ? 0xfff4f4f6 : 0xff222226);
         muted = owner.color("muted", dark ? 0xffafb0ba : 0xff56565f);
-        accent = color(ThemePalette.foreground(dark ? 0xffa9b5ff : 0xff4955c9));
+        accent = color(DiscordX.foreground(dark ? 0xffa9b5ff : 0xff4955c9));
     }
 
     int node(String type, Object... props) throws ReflectiveOperationException {
@@ -49,6 +51,42 @@ final class NativeControls {
         batch.children(id, label(title, 14, 600, accent));
         actions.put(id, action);
         return id;
+    }
+
+    int backButton(Action action) throws ReflectiveOperationException {
+        return iconButton("Back", owner.backIcon(), action);
+    }
+
+    int iconButton(String title, String uri, Action action) throws ReflectiveOperationException {
+        int id = node("view", "width", 48, "height", 48, "align", "center", "justify", "center",
+            "radius", 12, "on", PRESS, "role", "button", "accessibilityLabel", title);
+        batch.children(id, icon(uri, 24, text));
+        actions.put(id, action);
+        return id;
+    }
+
+    int button(String title, boolean primary, Action action) throws ReflectiveOperationException {
+        int id = node("view", "direction", "row", "align", "center", "justify", "center", "minHeight", 48,
+            "padding", insets(16, 8), "radius", 10, "background", primary ? accent : card,
+            "activeBackground", color(owner.isDark() ? 0xff454956 : 0xffdedfea),
+            "on", PRESS, "role", "button", "accessibilityLabel", title);
+        batch.children(id, label(title, 14, 600, primary ? color(owner.isDark() ? 0xff20294d : 0xffffffff) : text));
+        actions.put(id, action);
+        return id;
+    }
+
+    int toggle(String title, boolean checked, Action action) throws ReflectiveOperationException {
+        int target = node("view", "width", 48, "minHeight", 48, "align", "center", "justify", "center",
+            "on", PRESS, "role", "switch", "accessibilityLabel", title, "accessibilityChecked", checked);
+        int track = node("view", "width", 40, "height", 24, "radius", 12,
+            "direction", "row", "align", "center", "justify", checked ? "end" : "start",
+            "padding", insets(3, 3), "borderWidth", checked ? 0 : 1, "borderColor", muted,
+            "background", checked ? accent : color(owner.isDark() ? 0xff555966 : 0xff767b88));
+        int thumb = node("view", "width", 18, "height", 18, "radius", 9, "background", color(0xffd7e5ff));
+        batch.children(track, thumb);
+        batch.children(target, track);
+        actions.put(target, action);
+        return target;
     }
 
     int icon(String uri, int size, long tint) throws ReflectiveOperationException {

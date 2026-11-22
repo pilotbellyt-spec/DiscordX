@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="discordx.verification">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+  <application android:label="DiscordX plugin verification" android:debuggable="true" />
+  <instrumentation android:name="discordx.PluginRuntimeTestInstrumentation"
+    android:targetPackage="discordx.verification" android:label="DiscordX plugin runtime checks" />
+</manifest>

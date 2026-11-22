@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "message_logger",
+  "name": "MessageLogger",
+  "version": "1.0.1",
+  "author": "DiscordX",
+  "description": "Retain observed edits and single deletions for this session.",
+  "entrypoint": "discordx.plugins.message_logger.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "gateway",
+    "gateway_json",
+    "http_response",
+    "http_request",
+    "display_text",
+    "composer_text",
+    "clipboard"
+  ]
+}

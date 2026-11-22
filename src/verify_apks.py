@@ -43,7 +43,8 @@ def verify(base, density, abi, out, tools):
                             if re.fullmatch(r"classes\d*\.dex", item)]
             added_dex = [item for item in changes - before.keys()
                          if re.fullmatch(r"classes\d+\.dex", item)]
-            if len(changes) != 3 or len(existing_dex) != 1 or len(added_dex) != 1 or MODULE_ASSET not in changes:
+            plugin_assets = {item for item in changes if item.startswith("assets/discordx/plugins/")}
+            if len(changes - plugin_assets) != 3 or len(existing_dex) != 1 or len(added_dex) != 1 or MODULE_ASSET not in changes:
                 raise AssertionError(f"Unexpected changes in {name}: {sorted(changes)}")
             with ZipFile(output) as archive:
                 bootstrap = archive.read(added_dex[0])
@@ -52,6 +53,24 @@ def verify(base, density, abi, out, tools):
                     raise AssertionError("Bootstrap and plugin implementations must be separate")
                 if not module.startswith(b"dex\n") or b"Ldiscordx/DiscordXModule;" not in module:
                     raise AssertionError("Missing module entry class")
+                import json
+                import hashlib
+                import io
+                index = json.loads(archive.read("assets/discordx/plugins/index.json"))
+                expected_plugins = {"assets/discordx/plugins/index.json"} | {"assets/discordx/plugins/" + name for name in index}
+                if plugin_assets != expected_plugins or len(index) != len(set(index)):
+                    raise AssertionError("Plugin index differs from bundled packages")
+                for plugin_name in index:
+                    if "/" in plugin_name or "\\" in plugin_name or not plugin_name.endswith(".zip"):
+                        raise AssertionError("Invalid plugin asset name")
+                    with ZipFile(io.BytesIO(archive.read("assets/discordx/plugins/" + plugin_name))) as plugin:
+                        manifest = json.loads(plugin.read("manifest.json"))
+                        dex = plugin.read("classes.dex")
+                        if hashlib.sha256(dex).hexdigest() != manifest["dexSha256"]:
+                            raise AssertionError("Plugin DEX differs from its manifest")
+                        entrypoint = ("L" + manifest["entrypoint"].replace(".", "/") + ";").encode()
+                        if entrypoint in module or entrypoint not in dex:
+                            raise AssertionError("Plugin implementation must be independent from host module")
                 if module != (out / "module.dex").read_bytes():
                     raise AssertionError("Exported module differs from the signed asset")
         elif split == abi_split and changes != {host_path}:

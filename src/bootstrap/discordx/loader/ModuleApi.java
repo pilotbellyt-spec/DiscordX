@@ -10,12 +10,13 @@ import android.view.View;
 import android.widget.TextView;
 
 public interface ModuleApi {
-    int ABI = 4;
+    int ABI = 5;
 
     int abi();
     void prepare(Activity activity);
     void attach(Activity activity);
     void detach(Activity activity);
+    boolean onActivityResult(int request, int result, Intent data);
     boolean handleKey(Activity activity, KeyEvent event);
     Uri cleanLink(Context context, Uri uri);
     Intent browserIntent(Intent original);
@@ -29,7 +30,8 @@ public interface ModuleApi {
     void socketOpened(Object owner, int id, String url);
     void socketClosed(Object owner, int id);
     byte[] onFrame(Object owner, int id, byte[] bytes);
-    void onResponse(String url, byte[] bytes);
+    Object interceptHttp(Object request);
+    Object onHttpResponse(Object response);
     CharSequence decorateMessageText(CharSequence text);
     CharSequence cleanMessageText(CharSequence text);
     boolean onOverlayEvent(View handle, String event);

@@ -13,23 +13,9 @@ from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parent
-LAUNCH_TARGET = "com/discord/phoenix_launch/PhoenixLaunch.smali"
-TARGET = "com/discord/nativeapp/MainActivity.smali"
-LINK_TARGET = "com/discord/nativeapp/modules/w8.smali"
-GATEWAY_TARGET = "com/discord/nativeapp/modules/or.smali"
-DRAWABLE_TARGET = "lh/l.smali"
-TEXT_SPAN_TARGET = "com/discord/nativeapp/modules/props/b.smali"
-TEXT_VIEW_TARGET = "com/discord/nativeapp/modules/b7.smali"
-EDIT_TEXT_TARGET = "com/discord/nativeapp/modules/ej.smali"
-HTTP_TARGET = "com/discord/nativeapp/modules/bb.smali"
-OVERLAY_TARGET = "com/discord/nativeapp/modules/overlays/a1.smali"
-RENDER_TARGET = "com/discord/nativeapp/modules/j.smali"
-VIEW_EVENT_TARGET = "com/discord/nativeapp/modules/qo.smali"
-CLIPBOARD_TARGET = "com/discord/nativeapp/modules/f2.smali"
-MOTION_TARGET = "com/discord/nativeapp/modules/i2.smali"
 HOST = "Ldiscordx/loader/Bootstrap;"
 VERSION = "356207"
-SOURCES = sorted((ROOT / "discordx").glob("*.java"))
+SOURCES = sorted((ROOT / "discordx").glob("*.java")) + sorted((ROOT / "api").rglob("*.java"))
 BOOTSTRAP_SOURCES = sorted((ROOT / "bootstrap/discordx/loader").glob("*.java"))
 MODULE_ASSET = "assets/discordx/module.dex"
 PHOENIX_HOST = "lib/x86_64/liblibdiscord_wasm_host.so"
@@ -64,20 +50,24 @@ def splice(body, anchor, addition):
 
 
 def patch_launch(smali):
+    from host_discovery import method_signature
+    preference = method_signature(smali, ['"launch_client"'], '(Landroid/content/Context;)Ljava/lang/String;')
+    health = method_signature(smali, ['unhealthy_phoenix_launches', '3 launches'], '(Landroid/content/ContextWrapper;)Z')
+
     def prefer_phoenix(body):
-        start, key, read = body.partition('    const-string v0, "launch_client"\n')
-        if not key or "Landroid/content/SharedPreferences;->getString" not in read:
-            raise ValueError("Expected the saved Phoenix launch preference")
-        return start + key + exact(read, "    const/4 v1, 0x0\n", '    const-string v1, "phoenix"\n')
+        key = re.search(r'const-string ([vp]\d+), "launch_client"', body)
+        if key is None: raise ValueError('Expected launch preference key')
+        call = re.search(r'invoke-interface \{[^,]+, ' + re.escape(key[1]) + r', ([vp]\d+)\}, Landroid/content/SharedPreferences;->getString', body[key.end():])
+        if call is None: raise ValueError('Expected saved launch preference lookup')
+        default = call[1]
+        start, end = key.end(), key.end() + call.end()
+        between = body[start:end]
+        anchors = re.findall(r'^    const/(?:4|16) ' + re.escape(default) + r', 0x0$', between, re.MULTILINE)
+        if len(anchors) != 1: raise ValueError('Expected one default launch preference value')
+        return body[:start] + between.replace(anchors[0], f'    const-string {default}, "phoenix"') + body[end:]
 
-    smali = method_body(smali, "a(Landroid/content/Context;)Ljava/lang/String;", prefer_phoenix)
-
-    def force_phoenix(body):
-        if "unhealthy_phoenix_launches" not in body or "Phoenix didn\\'t stay up for 3 launches" not in body:
-            raise ValueError("Expected the Phoenix crash-loop gate")
-        return "    .locals 1\n\n    const/4 v0, 0x1\n    return v0\n"
-
-    return method_body(smali, "i(Landroid/content/ContextWrapper;)Z", force_phoenix)
+    smali = method_body(smali, preference, prefer_phoenix)
+    return method_body(smali, health, lambda body: '    .locals 1\n\n    const/4 v0, 0x1\n    return v0\n')
 
 
 def patch_activity(smali):
@@ -101,22 +91,50 @@ def patch_activity(smali):
         "    return v0\n"
         "    :discordx_continue\n",
     ))
+    smali = patch_activity_result(smali)
     return method_body(smali, "onDestroy()V", lambda body: splice(
         body, r"^    \.locals \d+$",
         f"    invoke-static/range {{p0 .. p0}}, {HOST}->detach(Landroid/app/Activity;)V\n",
     ))
 
 
+def patch_activity_result(smali):
+    signature = "onActivityResult(IILandroid/content/Intent;)V"
+    addition = f"""    invoke-static {{p1, p2, p3}}, {HOST}->onActivityResult(IILandroid/content/Intent;)Z
+    move-result v0
+    if-eqz v0, :discordx_activity_result
+    return-void
+    :discordx_activity_result
+"""
+    if re.search(r"^\.method [^\n]+ " + re.escape(signature), smali, re.MULTILINE):
+        return method_body(smali, signature, lambda body: splice(body, r"^    \.locals [1-9]\d*$", addition))
+    parent = re.search(r"^\.super (.+)$", smali, re.MULTILINE).group(1)
+    return smali.rstrip() + f"""
+
+.method protected {signature}
+    .locals 1
+
+{addition}
+    invoke-super {{p0, p1, p2, p3}}, {parent}->{signature}
+    return-void
+.end method
+"""
+
+
 def patch_browser(smali):
     if HOST in smali or "android.support.customtabs.extra.TITLE_VISIBILITY" not in smali:
         raise ValueError("Unexpected Phoenix browser handler")
-    smali = method_body(smali, "invoke(Ljava/lang/Object;)Ljava/lang/Object;", lambda body: splice(
-        body, r"^    :try_start_5$(?=\n    invoke-virtual \{v5, v0\}, Landroid/content/Intent;->setData\(Landroid/net/Uri;\)Landroid/content/Intent;)",
-        f"    invoke-static {{v1, v0}}, {HOST}->cleanLink(Landroid/content/Context;Landroid/net/Uri;)Landroid/net/Uri;\n"
-        "    move-result-object v0",
-    ))
-    return exact(smali, "invoke-virtual {v1, v5, p1}, Landroid/content/Context;->startActivity(Landroid/content/Intent;Landroid/os/Bundle;)V",
-                 f"invoke-static {{v1, v5, p1}}, {HOST}->openLink(Landroid/content/Context;Landroid/content/Intent;Landroid/os/Bundle;)V")
+    data = re.findall(r'invoke-virtual \{(\w+), (\w+)\}, Landroid/content/Intent;->setData\(Landroid/net/Uri;\)Landroid/content/Intent;', smali)
+    launch = re.findall(r'invoke-virtual \{(\w+), (\w+), (\w+)\}, Landroid/content/Context;->startActivity\(Landroid/content/Intent;Landroid/os/Bundle;\)V', smali)
+    if len(data) != 1 or len(launch) != 1 or data[0][0] != launch[0][1]:
+        raise ValueError('Expected one custom-tab URI and launch handoff')
+    intent, uri = data[0]
+    context, _, options = launch[0]
+    anchor = f'invoke-virtual {{{intent}, {uri}}}, Landroid/content/Intent;->setData(Landroid/net/Uri;)Landroid/content/Intent;'
+    smali = exact(smali, anchor, f'invoke-static {{{context}, {uri}}}, {HOST}->cleanLink(Landroid/content/Context;Landroid/net/Uri;)Landroid/net/Uri;\n'
+                  f'    move-result-object {uri}\n    ' + anchor)
+    anchor = f'invoke-virtual {{{context}, {intent}, {options}}}, Landroid/content/Context;->startActivity(Landroid/content/Intent;Landroid/os/Bundle;)V'
+    return exact(smali, anchor, f'invoke-static {{{context}, {intent}, {options}}}, {HOST}->openLink(Landroid/content/Context;Landroid/content/Intent;Landroid/os/Bundle;)V')
 
 
 def exact(text, anchor, replacement):
@@ -224,10 +242,26 @@ def patch_view_events(smali):
 
 
 def patch_http(smali):
-    anchor = '    const-string v2, "request"'
-    return exact(smali, anchor, "    iget-object v2, v0, Lg90/k0;->a:Lg90/b0;\n"
-                 "    iget-object v2, v2, Lg90/b0;->i:Ljava/lang/String;\n"
-                 f"    invoke-static {{v2, v1}}, {HOST}->onResponse(Ljava/lang/String;[B)V\n\n" + anchor)
+    def edit(body):
+        if body.count("    return-object p1") != 2:
+            raise ValueError("Expected Cronet and fallback HTTP returns")
+        body = body.replace("    return-object p1", f"    invoke-static {{p1}}, {HOST}->onHttpResponse(Ljava/lang/Object;)Ljava/lang/Object;\n"
+                            "    move-result-object p1\n    check-cast p1, Lg90/q0;\n    return-object p1")
+        anchor = "    iget-object v0, p1, Lm90/e;->e:Lg90/k0;"
+        return exact(body, anchor, anchor + f"\n    invoke-static {{v0}}, {HOST}->interceptHttp(Ljava/lang/Object;)Ljava/lang/Object;\n"
+                     "    move-result-object v1\n    if-eqz v1, :discordx_http_request\n"
+                     "    check-cast v1, Lg90/q0;\n    return-object v1\n    :discordx_http_request\n")
+    if "discordxBuffer()" in smali:
+        raise ValueError("HTTP host already contains the DiscordX buffer bridge")
+    return method_body(smali, "a(Lm90/e;)Lg90/q0;", edit) + """
+
+.method public static discordxBuffer()Ljava/lang/Object;
+    .locals 1
+    new-instance v0, Lw90/h;
+    invoke-direct {v0}, Ljava/lang/Object;-><init>()V
+    return-object v0
+.end method
+"""
 
 
 def patch_clipboard(smali):
@@ -284,7 +318,7 @@ def compile_dex(build, android_jar, work, sources, dependencies=()):
     classes.mkdir(parents=True)
     dex_dir.mkdir()
     classpath = os.pathsep.join(str(path) for path in (android_jar, *dependencies))
-    run("javac", "--release", "8", "-Xlint:-options", "-cp", classpath, "-d", classes, *sources)
+    run("javac", "--release", "8", "-encoding", "UTF-8", "-Xlint:-options", "-cp", classpath, "-d", classes, *sources)
     extra_classpath = [part for dependency in dependencies for part in ("--classpath", dependency)]
     run(build / "d8.bat", "--min-api", "24", "--lib", android_jar, "--output", dex_dir,
         *extra_classpath, *sorted(classes.rglob("*.class")))
@@ -314,7 +348,7 @@ def host_dex(base, apktool, work):
     cache = ROOT / ".cache" / "host-dex"
     cache.mkdir(parents=True, exist_ok=True)
     key = sha256()
-    for file in (base, apktool, Path(__file__)):
+    for file in (base, apktool, Path(__file__), ROOT / "host_discovery.py"):
         with file.open("rb") as stream:
             key.update(file_digest(stream, "sha256").digest())
     cached = cache / (key.hexdigest() + ".dex")
@@ -328,9 +362,10 @@ def host_dex(base, apktool, work):
             minimal.writestr(name, original.read(name))
     decoded = work / "decoded"
     run("java", "-Xmx2g", "-jar", apktool, "d", "-r", "-o", decoded, host_only)
-    for relative, patch in HOST_PATCHES.items():
-        target = decoded / "smali" / relative
-        target.write_text(patch(target.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
+    from host_discovery import discover
+    targets = discover(decoded / "smali", HOST_PATCHES)
+    for target, modified in targets:
+        target.write_text(modified, encoding="utf-8", newline="\n")
     rebuilt = work / "rebuilt.apk"
     run("java", "-Xmx2g", "-jar", apktool, "b", "-o", rebuilt, decoded)
     with ZipFile(rebuilt) as archive, TemporaryDirectory(prefix="cache-", dir=cache) as staging:
@@ -340,22 +375,22 @@ def host_dex(base, apktool, work):
     return cached
 
 
-HOST_PATCHES = {
-    LAUNCH_TARGET: patch_launch,
-    TARGET: patch_activity,
-    LINK_TARGET: patch_browser,
-    GATEWAY_TARGET: patch_gateway,
-    DRAWABLE_TARGET: patch_drawables,
-    TEXT_SPAN_TARGET: patch_text_span,
-    TEXT_VIEW_TARGET: patch_text_view,
-    EDIT_TEXT_TARGET: patch_edit_text,
-    HTTP_TARGET: patch_http,
-    OVERLAY_TARGET: patch_overlay,
-    RENDER_TARGET: patch_render,
-    VIEW_EVENT_TARGET: patch_view_events,
-    CLIPBOARD_TARGET: patch_clipboard,
-    MOTION_TARGET: patch_motion,
-}
+HOST_PATCHES = (
+    patch_launch,
+    patch_activity,
+    patch_browser,
+    patch_gateway,
+    patch_drawables,
+    patch_text_span,
+    patch_text_view,
+    patch_edit_text,
+    patch_http,
+    patch_overlay,
+    patch_render,
+    patch_view_events,
+    patch_clipboard,
+    patch_motion,
+)
 
 
 def build_mod(args, build, android_jar, work):
@@ -371,6 +406,8 @@ def build_mod(args, build, android_jar, work):
 
     bootstrap, api = compile_dex(build, android_jar, work / "bootstrap", BOOTSTRAP_SOURCES)
     payload, _ = compile_dex(build, android_jar, work / "module", SOURCES, (api,))
+    from build_plugins import build_plugins
+    index, packages = build_plugins(args.sdk, args.out / "plugins", work / "plugin-build")
     base = inputs["base"]
     replacement = host_dex(base, args.apktool, work)
     with ZipFile(base) as archive:
@@ -379,7 +416,10 @@ def build_mod(args, build, android_jar, work):
     if bootstrap_name in dex_names:
         raise ValueError("Unexpected source DEX layout")
     patched = work / "discordx-base.apk"
-    repack(base, patched, {"classes.dex": replacement, bootstrap_name: bootstrap, MODULE_ASSET: payload})
+    replacements = {"classes.dex": replacement, bootstrap_name: bootstrap, MODULE_ASSET: payload,
+                    "assets/discordx/plugins/index.json": index}
+    replacements.update({"assets/discordx/plugins/" + package.name: package for package in packages})
+    repack(base, patched, replacements)
 
     if not args.keystore:
         shutil.copyfile(patched, args.out / "DiscordX-base-unsigned.apk")

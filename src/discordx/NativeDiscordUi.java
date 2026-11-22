@@ -28,7 +28,7 @@ final class NativeDiscordUi {
     private final Map<Integer, Insertion> insertions = new HashMap<>();
     private final Map<String, Long> colors = new HashMap<>();
     private final NativeSettings settingsPage;
-    private final NativeReviews reviews;
+    final PluginPages pluginPages;
     private int sequence = 0x70000000;
     private boolean submitting, loggedFailure;
     private PhoenixRender render;
@@ -40,7 +40,7 @@ final class NativeDiscordUi {
     NativeDiscordUi(Activity activity) {
         this.activity = activity;
         settingsPage = new NativeSettings(this);
-        reviews = new NativeReviews(this);
+        pluginPages = new PluginPages(this);
     }
 
     int nextId() { return sequence++; }
@@ -49,6 +49,16 @@ final class NativeDiscordUi {
         if (value != null) return android.graphics.Color.luminance(value.intValue()) > 0.5;
         return (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
             != Configuration.UI_MODE_NIGHT_NO;
+    }
+
+    String backIcon() {
+        for (Node node : nodes.values()) {
+            String uri = node.uri;
+            if ("image".equals(node.type) && uri.startsWith("res://")
+                    && (uri.contains("arrow") || uri.contains("chevron"))
+                    && (uri.contains("left") || uri.contains("back"))) return uri;
+        }
+        return "res://ic_arrow_back_black_24";
     }
 
     long color(String role, int fallback) {
@@ -81,12 +91,12 @@ final class NativeDiscordUi {
                 output = place(output, account, list, account.id, ui ->
                     settingsEntry(ui, batch, account, (event, payload) -> settingsPage.open(nav, page)), false);
             }
-            boolean review = DiscordX.enabled(activity, "review_db");
-            boolean copy = DiscordX.enabled(activity, "copy_profile_link");
+            java.util.ArrayList<PluginUiBridge.ProfileAction> actions = new java.util.ArrayList<>();
+            for (PluginUiBridge.ProfileAction action : DiscordX.manager.profiles) if (action.scope.active) actions.add(action);
             Set<Integer> profileLists = new HashSet<>();
             Set<Integer> anchors = new HashSet<>(profiles);
             anchors.addAll(membership);
-            if (review || copy) for (int anchor : anchors) {
+            if (!actions.isEmpty()) for (int anchor : anchors) {
                 Node marker = nodes.get(anchor);
                 if (marker == null) continue;
                 int member = memberSince(anchor, 0);
@@ -134,14 +144,11 @@ final class NativeDiscordUi {
                 }
                 output = place(output, scroll, list, after, ui -> {
                     long text = foreground == 0 ? ui.text : foreground;
-                    int reviewRow = review ? ui.profileLink("Reviews", "res://ic_mana_star_shooting", text,
-                        (event, payload) -> reviews.open(profileRoot, user)) : -1;
-                    int copyRow = copy ? ui.profileLink("Copy Profile Link", "res://ic_mana_puzzle_piece_plus", text,
-                        (event, payload) -> copy(user)) : -1;
-                    if (!copy) return reviewRow;
-                    if (!review) return copyRow;
+                    java.util.ArrayList<Integer> rows = new java.util.ArrayList<>();
+                    for (PluginUiBridge.ProfileAction action : actions) rows.add(ui.profileLink(action.title,
+                        "res://ic_mana_puzzle_piece_plus", text, (event, payload) -> action.scope.guard(() -> action.action.accept(user))));
                     int section = ui.column(0, NativeControls.insets(0, 0));
-                    ui.batch.children(section, reviewRow, copyRow);
+                    ui.batch.children(section, PhoenixRender.integers(rows));
                     return section;
                 }, true);
                 insertions.get(scroll.id).subject = user;
@@ -164,7 +171,7 @@ final class NativeDiscordUi {
         int[] children = parent.children;
         for (int i = 0; i < children.length; i++) if (children[i] == neighbor) {
             batch.children(parent.id, inserting(children, i + (after ? 1 : 0), row));
-            insertions.put(anchor.id, new Insertion(ui));
+            insertions.put(anchor.id, new Insertion(ui, parent.id, after));
             events.putAll(ui.actions);
             Log.i(TAG, after ? "ReviewDB profile row in Phoenix batch" : "DiscordX Settings row in Phoenix batch");
             if (after) main.post(() -> checkProfileRow(row, parent.id));
@@ -228,7 +235,7 @@ final class NativeDiscordUi {
                         Insertion entry = insertions.remove(dead);
                         if (entry != null) main.post(() -> delete(entry.ui));
                         settingsPage.hostRemoved(dead);
-                        reviews.hostRemoved(dead);
+
                     }
                     break;
             }
@@ -485,6 +492,12 @@ final class NativeDiscordUi {
     }
 
     boolean event(int id, String event, Object payload, Object completion) {
+        Node screen = nodes.get(id);
+        if (screen != null && ("navigate".equals(event) || "appeared".equals(event))) {
+            String tag = screen.access.isEmpty() ? screen.nativeId : screen.access;
+            if (!tag.isEmpty()) DiscordX.manager.hooks.each(discordx.api.Hooks.NAVIGATION,
+                callback -> callback.accept(new discordx.api.Hooks.Navigation(event, tag)));
+        }
         NativeControls.Action action = events.get(id);
         if (action == null && settingsPage.intercepts(id, event)) action = (name, data) -> settingsPage.close();
         if (action == null && (id < 0x70000000 || id >= sequence)) return false;
@@ -525,6 +538,13 @@ final class NativeDiscordUi {
             });
             return true;
         }
+        if (render != null && renderer != null) {
+            main.post(() -> {
+                try { settingsPage.openModal(); }
+                catch (ReflectiveOperationException error) { failure("Could not open plugin manager", error); }
+            });
+            return true;
+        }
         return false;
     }
 
@@ -532,14 +552,15 @@ final class NativeDiscordUi {
         Object state = view.getTag(0x7f0a0567);
         if (state == null || !("dismiss".equals(event) || "exitEnd".equals(event))) return false;
         try {
-            return reviews.overlayEvent(state.getClass().getField("a").getInt(state), event);
+            int id = state.getClass().getField("a").getInt(state);
+            return settingsPage.overlayEvent(id) || pluginPages.overlayEvent(id);
         } catch (ReflectiveOperationException error) {
             failure("Could not identify the Phoenix modal event", error);
             return false;
         }
     }
     void reset() {
-        if (renderer != null) reviews.reset();
+        pluginPages.reset();
         events.clear();
         nodes.clear();
         parents.clear();
@@ -548,6 +569,29 @@ final class NativeDiscordUi {
         membership.clear();
         insertions.clear();
         settingsPage.reset();
+    }
+
+    void pluginsChanged() {
+        main.post(() -> {
+            if (activity.isDestroyed()) return;
+            try {
+                if (renderer != null && render != null) {
+                    PhoenixRender.Builder batch = builder();
+                    java.util.Iterator<Map.Entry<Integer, Insertion>> iterator = insertions.entrySet().iterator();
+                    while (iterator.hasNext()) {
+                        Insertion insertion = iterator.next().getValue();
+                        if (!insertion.profile) continue;
+                        Node parent = nodes.get(insertion.parent);
+                        if (parent != null) batch.children(parent.id, parent.children);
+                        discard(batch, insertion.ui);
+                        iterator.remove();
+                    }
+                    Object updated = onBatch(renderer, batch.build());
+                    render.submitBatch(renderer, updated);
+                }
+                settingsPage.refresh();
+            } catch (ReflectiveOperationException | RuntimeException error) { failure("Could not refresh plugin contributions", error); }
+        });
     }
 
     void failure(String message, Throwable error) {
@@ -582,7 +626,9 @@ final class NativeDiscordUi {
     private static final class Insertion {
         final NativeControls ui;
         String subject;
-        Insertion(NativeControls ui) { this.ui = ui; }
+        final int parent;
+        final boolean profile;
+        Insertion(NativeControls ui, int parent, boolean profile) { this.ui = ui; this.parent = parent; this.profile = profile; }
     }
 
     private static final class AvatarMatch {
@@ -627,7 +673,7 @@ final class NativeDiscordUi {
             for (String name : new String[] {access, nativeId}) {
                 if (!name.startsWith("profile-avatar-")) continue;
                 String id = name.substring("profile-avatar-".length());
-                if (MessageLogger.snowflake(id)) return id;
+                if (Ids.snowflake(id)) return id;
                 Matcher avatar = AVATAR.matcher(uri);
                 if (avatar.matches()) return avatar.group(1);
             }

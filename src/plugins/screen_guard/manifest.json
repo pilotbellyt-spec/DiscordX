@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "screen_guard",
+  "name": "Screen Share Privacy",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Protect the Discord window from screenshots and screen sharing.",
+  "entrypoint": "discordx.plugins.screen_guard.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "activity"
+  ]
+}

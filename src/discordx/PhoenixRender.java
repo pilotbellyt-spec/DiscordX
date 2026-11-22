@@ -136,6 +136,10 @@ final class PhoenixRender {
         applyNow.invoke(apply.newInstance(24, renderer, builder.build()));
     }
 
+    void submitBatch(Object renderer, Object batch) throws ReflectiveOperationException {
+        applyNow.invoke(apply.newInstance(24, renderer, batch));
+    }
+
     final class Builder {
         private final ArrayList<Integer> ops = new ArrayList<>();
         private final ArrayList<Object> payloads = new ArrayList<>();

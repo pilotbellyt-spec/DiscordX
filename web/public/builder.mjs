@@ -64,6 +64,9 @@ export async function build({base, abi, density, architecture, payload, identity
   for (const entry of config) if (entry.name.startsWith('res/') && !names.has(entry.name)) { out.push(entry); names.add(entry.name); }
   out.push(await deflatedEntry('classes4.dex',payload['bootstrap.dex']));
   out.push(storedEntry('assets/discordx/module.dex',payload['module.dex']));
+  for (const file of Object.keys(payload.manifest.files)) if (file.startsWith('plugins/')) {
+    out.push(storedEntry(`assets/discordx/${file}`, payload[file]));
+  }
   log('Merged splits and injected DiscordX loader and plugins. Signing APK…');
   const parts = await signV2(writeZip(out),decodeIdentity(identity),log);
   log('Build complete.');

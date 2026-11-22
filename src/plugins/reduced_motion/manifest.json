@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "reduced_motion",
+  "name": "Reduce Motion",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Reduce animations while respecting the system preference.",
+  "entrypoint": "discordx.plugins.reduced_motion.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "reduce_motion"
+  ]
+}

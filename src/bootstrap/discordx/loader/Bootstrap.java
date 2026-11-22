@@ -70,6 +70,10 @@ public final class Bootstrap {
         if (module != null) module.detach(activity);
     }
 
+    public static boolean onActivityResult(int request, int result, Intent data) {
+        return module != null && module.onActivityResult(request, result, data);
+    }
+
     public static boolean handleKey(Activity activity, KeyEvent event) {
         return module != null && module.handleKey(activity, event);
     }
@@ -130,9 +134,8 @@ public final class Bootstrap {
         return module == null ? bytes : module.onFrame(owner, id, bytes);
     }
 
-    public static void onResponse(String url, byte[] bytes) {
-        if (module != null) module.onResponse(url, bytes);
-    }
+    public static Object interceptHttp(Object request) { return module == null ? null : module.interceptHttp(request); }
+    public static Object onHttpResponse(Object response) { return module == null ? response : module.onHttpResponse(response); }
 
     public static CharSequence decorateMessageText(CharSequence text) {
         return module == null ? text : module.decorateMessageText(text);

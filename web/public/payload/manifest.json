@@ -1,10 +1,21 @@
 {
   "version": 356207,
   "sourceDexSha256": "6b8c8374f9aa93114dc9a4e3d6847883503607416831de2b4c09fcee285c5b5c",
-  "hostDexSha256": "a19ab841af3173a8fe563ab05abddc2d87ae542366efc834694e2e78e9f5bf02",
+  "hostDexSha256": "618c56fa77fb3b4dcaaedc9398f8d4ad81a4c414e14141cddeb0057a8dc1ea9e",
   "files": {
-    "host.patch": "24a074f1df37e1ac7200bae9bf357c3b3b10ce8d2d741ad06ac7ce0f96f030a1",
-    "bootstrap.dex": "85a91707a0d47dac14515d974b0aed79b842580350230da48c3cacc9df88aeca",
-    "module.dex": "668255487ba3909f8f3d735f7dbd8d982afecea6b5e3e0e61019a035bfecf067"
+    "host.patch": "021b5252abce376119b36ad8d8024fa49a8d86202e99ba0f047e285561cc9b7c",
+    "bootstrap.dex": "836145eae105284d7db20c85c21d4d690c7553ec62a85b6c57eb0bd6a93b6119",
+    "module.dex": "f033b6d246fd76fbb63d661dc3abc41ac4140c63ef3eaaa20474eef087293f04",
+    "plugins/clean_links.zip": "67aa1fbac435a94973137946f4c1b2a1645eda973bb867470f57d8f1660defe6",
+    "plugins/copy_clean_links.zip": "e6d6f92b6240fbcab2967204e1af05c128083a85e2d936c99f3c4662a83af0ba",
+    "plugins/copy_profile_link.zip": "0768c88190913af5b0403a0d737307e85529ef2e1388ee45ba5cda5fd013a6c9",
+    "plugins/custom_themes.zip": "f9a1086a4c65c00469dcb56d7d953d03f2db4cdbd16fb718455a71aef0935a1c",
+    "plugins/external_browser.zip": "e4042a0d1c7d73ef5a195757070676ecda6a86c326ee86418e9be37ef84a35d3",
+    "plugins/index.json": "4008d3529d1637f8ced8a6e4e0bccedb31a10aeff0b300c35b43d374984994b2",
+    "plugins/message_logger.zip": "12a378b889d799f3bcd7707f2c55430175360f1241f4fe5b0533d7f3ec81e77b",
+    "plugins/quick_jump.zip": "fddbb483bc3e8032564c1ce485e490b1365048afb658a1e6631d3a7ea0b3b872",
+    "plugins/reduced_motion.zip": "0ccbd97e76e1cbed3b822a7fd1f32d141fc23ee5ccfbcd45c293285e82a981ca",
+    "plugins/review_db.zip": "01a9674d1e23f029134162ee5253df70f922787867a32c1e6ec09567942093b7",
+    "plugins/screen_guard.zip": "a662e8a9710126554790d0ad25b1e707109d03455064a5bd93bd0278d5f41428"
   }
 }

@@ -51,7 +51,7 @@ final class PhoenixModal {
                 if (keyEvent.getAction() == KeyEvent.ACTION_UP) modal.close();
                 return true;
             });
-            Log.i("DiscordX", "ReviewDB opened the Phoenix modal");
+            Log.i("DiscordX", "Plugin opened the Phoenix modal");
             return modal;
         } catch (ReflectiveOperationException | RuntimeException failure) {
             Log.w("DiscordX", "Could not open the Phoenix modal", failure);
