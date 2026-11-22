@@ -127,6 +127,32 @@ public final class HttpBridgeTestInstrumentation extends Instrumentation {
                 check(presses.get() == 2, "Both native button callbacks execute");
                 check(strings.contains("history " + id) && strings.contains("edited") && strings.stream().anyMatch(v -> v.endsWith("private reply")),
                     "Content and timestamp accessories and edited local reply mount in a real render transaction");
+                discordx.api.Chat.Option<Integer> count = new discordx.api.Chat.Option<>("count", true, Integer::valueOf);
+                AtomicInteger parsed = new AtomicInteger();
+                chat.slashCommand("count", "Set count", Collections.singletonList(count), values -> parsed.set(values.get(count)));
+                check(ChatSubmission.apply(manager, "/count 42") == null && parsed.get() == 42, "Typed integer argument executes locally");
+
+                PhoenixRender.Builder picker = adapter.addTo(null);
+                picker.create(10, "input", "accessibilityId", "composer");
+                picker.create(11, "scroll", "accessibilityId", "suggestions");
+                for (int n = 12; n <= 20; n++) picker.create(n, "view");
+                picker.children(11, 12); picker.children(12, 13); picker.children(13, 20, 14);
+                for (int n = 14; n < 19; n++) picker.children(n, n + 1);
+                ui.onBatch(renderer, picker.build());
+                Class<?> payloadType = loader.loadClass("lh.j3");
+                Object payload = payloadType.getConstructor().newInstance();
+                ((java.util.Map)payloadType.getField("a").get(payload)).put("text", "/co");
+                ui.event(10, "changeText", payload, null);
+                PhoenixRender.Builder refresh = adapter.addTo(null);
+                refresh.children(12, 13);
+                PhoenixRender.Batch filtered = adapter.read(ui.onBatch(renderer, refresh.build()));
+                boolean insidePicker = false;
+                for (int i = 0; i < filtered.count; i++) {
+                    if (filtered.kind(i) != PhoenixRender.CHILDREN || filtered.id(i) != 12) continue;
+                    int[] children = filtered.children(i);
+                    if (children.length == 2 && children[1] == 13 && ui.events.containsKey(children[0])) insidePicker = true;
+                }
+                check(insidePicker, "Matching local command is inside the native results list alongside the original row");
                 reply.close();
                 check(manager.localReplies.isEmpty(), "Closing local reply removes it");
                 active.close();

@@ -17,7 +17,7 @@ public final class HostInfo {
             try { supported.add(field.get(null).toString()); }
             catch (IllegalAccessException impossible) { throw new AssertionError(impossible); }
         }
-        Collections.addAll(supported, "ui.settings", "ui.profile_actions", "ui.message_actions", "ui.commands", "ui.pages", "ui.layouts", "chat.buttons", "chat.accessories", "chat.commands", "chat.local_replies", "chat.local_messages", "chat.cache", "ui.android_modal");
+        Collections.addAll(supported, "ui.settings", "ui.profile_actions", "ui.message_actions", "ui.commands", "ui.pages", "ui.layouts", "chat.buttons", "chat.accessories", "chat.commands", "chat.command_options", "chat.local_replies", "chat.local_messages", "chat.cache", "ui.android_modal");
         capabilities = Collections.unmodifiableSet(supported);
     }
 }

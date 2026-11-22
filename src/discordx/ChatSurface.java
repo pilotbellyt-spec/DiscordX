@@ -20,14 +20,15 @@ final class ChatSurface {
     private boolean redrawAll;
     private String channel, channelSignature;
     private int channelGeneration;
+    private int pickerRows = -1;
     private int localBefore = -1, localParent = -1;
     ChatSurface(NativeDiscordUi owner) { this.owner = owner; }
 
     void observe(NativeDiscordUi.Node node) {
         if ("text".equals(node.type) && (!DiscordX.manager.chatTints.isEmpty() || tinted.containsKey(node.id))) updatedText.add(node.id);
-        String tag = node.access;
+        String tag = node.tag("suggestions") ? "suggestions" : node.access;
         String previous = anchors.get(node.id);
-        boolean known = tag.equals("search.entry") || tag.equals("composer.expressions") ||
+        boolean known = tag.equals("suggestions") || tag.equals("search.entry") || tag.equals("composer.expressions") ||
             tag.startsWith("message.content:") || tag.startsWith("message.timestamp:");
         if (known && !tag.equals(previous)) { anchors.put(node.id, tag); mark(node.id); }
         if (!known && previous != null) { anchors.remove(node.id); mark(node.id); }
@@ -44,7 +45,7 @@ final class ChatSurface {
         if (old != null) owner.main.post(() -> owner.delete(old));
     }
 
-    void reset() { tinted.clear(); updatedText.clear(); redrawIds.clear(); redrawAll = false; localBefore = localParent = -1; channel = null; channelSignature = null; channelGeneration++; mounted.clear(); dirty.clear(); drafts.clear(); anchors.clear(); }
+    void reset() { pickerRows = -1; tinted.clear(); updatedText.clear(); redrawIds.clear(); redrawAll = false; localBefore = localParent = -1; channel = null; channelSignature = null; channelGeneration++; mounted.clear(); dirty.clear(); drafts.clear(); anchors.clear(); }
     private void mark(int id) {
         Integer parent = owner.parentId(id);
         if (parent != null) dirty.add(parent);
@@ -55,7 +56,7 @@ final class ChatSurface {
         for (Map.Entry<Integer,String> anchor : anchors.entrySet()) {
             if (message == null || anchor.getValue().endsWith(":" + message)) mark(anchor.getKey());
         }
-        if (message == null) { dirty.addAll(mounted.keySet()); dirty.add(localParent); }
+        if (message == null) { dirty.addAll(mounted.keySet()); dirty.add(localParent); dirty.add(pickerRows); }
     }
 
     void navigated() { channelSignature = null; channel = null; channelGeneration++; }
@@ -63,7 +64,7 @@ final class ChatSurface {
     private void resolveChannel(PluginManager manager) {
         boolean localMessages = manager.localReplies.stream().anyMatch(item -> item.channel);
         if (!localMessages && channelSignature != null) navigated();
-        if (!localMessages && manager.commands.isEmpty()) return;
+        if (!localMessages) return;
         String newest = "";
         int composer = -1;
         for (Map.Entry<Integer,String> entry : anchors.entrySet()) {
@@ -92,7 +93,6 @@ final class ChatSurface {
             dirty.add(localParent); dirty.add(nextParent);
             localParent = nextParent; localBefore = before;
         }
-        if (!localMessages) return;
         String signature = composer + "/" + newest;
         if (signature.equals(channelSignature)) return;
         channelSignature = signature;
@@ -121,6 +121,12 @@ final class ChatSurface {
             return output;
         }
         resolveChannel(manager);
+        int nextRows = manager.commands.isEmpty() ? -1 : pickerRows();
+        if (nextRows != pickerRows) {
+            dirty.add(pickerRows);
+            dirty.add(nextRows);
+            pickerRows = nextRows;
+        }
         dirty.addAll(changed);
         Set<Integer> rebuild = new HashSet<>(dirty);
         dirty.clear();
@@ -128,7 +134,7 @@ final class ChatSurface {
             NativeDiscordUi.Node parent = owner.node(parentId);
             if (parent == null) continue;
             String content = anchors.get(parentId);
-            boolean relevant = parentId == localParent || content != null && content.startsWith("message.content:");
+            boolean relevant = parentId == pickerRows || parentId == localParent || content != null && content.startsWith("message.content:");
             for (int child : parent.children) relevant |= anchors.containsKey(child);
             NativeControls old = mounted.remove(parentId);
             if (!relevant && old == null) continue;
@@ -136,6 +142,7 @@ final class ChatSurface {
             if (old != null) owner.discard(output, old);
             NativeControls ui = new NativeControls(owner, output);
             ArrayList<Integer> children = new ArrayList<>();
+            if (parentId == pickerRows) commandRows(ui, children, manager);
             for (int child : parent.children) {
                 if (child == localBefore) composerPanel(ui, children, manager);
                 String tag = anchors.get(child);
@@ -208,33 +215,50 @@ final class ChatSurface {
         return output;
     }
 
+    private int pickerRows() {
+        for (Map.Entry<Integer,String> anchor : anchors.entrySet()) {
+            if (!anchor.getValue().equals("suggestions")) continue;
+            NativeDiscordUi.Node root = owner.node(anchor.getKey());
+            if (root == null || root.children.length != 1) continue;
+            NativeDiscordUi.Node container = owner.node(root.children[0]);
+            // A stack overlays siblings. Use its column so native results move down for plugin rows.
+            while (container != null && !container.type.equals("view") && container.children.length > 0)
+                container = owner.node(container.children[0]);
+            if (container != null && container.type.equals("view") && !"row".equals(container.direction))
+                return container.id;
+        }
+        return -1;
+    }
+
+    private void commandRows(NativeControls ui, ArrayList<Integer> rows, PluginManager manager)
+            throws ReflectiveOperationException {
+        if (drafts.size() != 1) return;
+        int input = drafts.keySet().iterator().next();
+        String draft = drafts.get(input);
+        if (!draft.startsWith("/")) return;
+        for (PluginUiBridge.Command command : manager.commands) {
+            String name = "/" + command.name;
+            if (!command.scope.active || !name.startsWith(draft)) continue;
+            rows.add(ui.row(name, command.description, command.scope.info().name, 0L, (event, payload) -> {
+                if (!command.scope.active || !manager.commands.contains(command) || !draft.equals(drafts.get(input))) return;
+                android.view.View view = owner.nativeView(input);
+                android.widget.EditText field = findField(view);
+                if (field == null) return;
+                String next = command.hasForm ? "" : name + " ";
+                field.setText(next);
+                field.setSelection(next.length());
+                if (!next.equals(drafts.get(input))) owner.changeDraft(view, next);
+                if (command.hasForm) command.scope.guard(command.action);
+            }));
+        }
+    }
+
     private void composerPanel(NativeControls ui, ArrayList<Integer> children, PluginManager manager)
             throws ReflectiveOperationException {
         ArrayList<Integer> rows = new ArrayList<>();
         for (ChatBridge.Reply reply : manager.localReplies)
             if (reply.channel && reply.owner.scope.active && reply.id.equals(channel))
                 rows.add(ui.label(reply.owner.scope.info().name + " · " + reply.text, 14, 500, ui.muted));
-        if (drafts.size() == 1) {
-            int input = drafts.keySet().iterator().next();
-            String draft = drafts.get(input);
-            if (draft.startsWith("/") && !draft.contains(" ")) {
-                int count = 0;
-                for (PluginUiBridge.Command command : manager.commands) {
-                    String name = "/" + command.name;
-                    if (!command.scope.active || !name.startsWith(draft)) continue;
-                    rows.add(ui.link(name, (event, ignored) -> {
-                        if (!command.scope.active) return;
-                        android.view.View view = owner.nativeView(input);
-                        android.widget.EditText field = findField(view);
-                        if (field != null) {
-                            field.setText(name + " ");
-                            field.setSelection(field.length());
-                        }
-                    }));
-                    if (++count == 6) break;
-                }
-            }
-        }
         if (rows.isEmpty()) return;
         int stack = ui.node("view", "direction", "column", "width", "fill", "gap", 4, "padding", NativeControls.insets(12, 6));
         ui.batch.children(stack, PhoenixRender.integers(rows));

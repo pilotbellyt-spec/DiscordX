@@ -4,6 +4,9 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import discordx.api.PluginContext;
+import discordx.api.Chat;
+import java.util.Collections;
+
 public final class Plugin implements discordx.api.Plugin {
     @Override public void start(PluginContext context) {
         String[] input = {""}, status = {""};
@@ -22,6 +25,19 @@ public final class Plugin implements discordx.api.Plugin {
             });
         };
         context.ui().settings("Open a Discord link", screen);
-        context.ui().command("quick-jump", "Open a Discord channel, message, or profile link.", () -> context.ui().open("Quick Jump", screen));
+        Chat.Option<String> link = new Chat.Option<>("link", true, value -> {
+            String url = DiscordLinks.jumpDestination(value);
+            if (url == null) throw new IllegalArgumentException("Enter a Discord channel, message, or profile link.");
+            return url;
+        });
+        context.chat().slashCommand("quick-jump", "Open a Discord channel, message, or profile link.",
+            Collections.singletonList(link), args -> {
+                try {
+                    context.activity().startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(args.get(link)))
+                        .setPackage(context.application().getPackageName()));
+                } catch (ActivityNotFoundException unavailable) {
+                    context.ui().open("Quick Jump", page -> page.text("Phoenix could not open this link."));
+                }
+            });
     }
 }
