@@ -68,6 +68,13 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             discordx.api.Registration action = entry.scope.ui().messageAction("Verify message", message -> {});
             discordx.api.Registration command = entry.scope.ui().command("verify", "Test command", () -> {});
             check(manager.messageActions.size() == 1 && manager.commands.size() == 1, "Independent message actions and commands register");
+            rejectsCommand(() -> entry.scope.chat().slashCommand("verify", "", args -> {}));
+            rejectsCommand(() -> entry.scope.ui().command("Two Words", "", () -> {}));
+            discordx.api.Registration fromChat = entry.scope.chat().slashCommand("second", "", args -> {});
+            rejectsCommand(() -> entry.scope.ui().command("second", "", () -> {}));
+            fromChat.close();
+            entry.scope.ui().command("second", "", () -> {}).close();
+            check(manager.commands.size() == 1, "Both command APIs enforce one namespace and release names on close");
             org.json.JSONObject message = new org.json.JSONObject("{\"id\":\"123456789012345678\",\"channel_id\":\"223456789012345678\",\"content\":\"identical label\"}");
             MessageIdentity.observe(message);
             String marked = message.getString("content");
@@ -109,6 +116,12 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             check("fail".contentEquals(copy("fail")), "Throwing callback preserves previous host result");
             manager.main.post(() -> afterCallbackFailure(example));
         } catch (Throwable error) { finishReport(error); }
+    }
+
+    private static void rejectsCommand(Runnable register) {
+        try { register.run(); }
+        catch (IllegalArgumentException expected) { return; }
+        throw new AssertionError("Invalid or duplicate command was registered");
     }
 
     private void checkBundledHooks(String id) throws Exception {

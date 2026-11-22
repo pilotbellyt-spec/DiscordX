@@ -22,6 +22,6 @@ public final class Plugin implements discordx.api.Plugin {
             });
         };
         context.ui().settings("Open a Discord link", screen);
-        context.ui().command("Quick Jump", "Open a Discord channel, message, or profile link.", () -> context.ui().open("Quick Jump", screen));
+        context.ui().command("quick-jump", "Open a Discord channel, message, or profile link.", () -> context.ui().open("Quick Jump", screen));
     }
 }

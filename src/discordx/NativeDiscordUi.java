@@ -38,8 +38,11 @@ final class NativeDiscordUi {
     private boolean reportedMissingScope;
     private final Set<String> profileDiagnostics = new HashSet<>();
 
+    private final int viewStateTag;
+
     NativeDiscordUi(Activity activity) {
         this.activity = activity;
+        viewStateTag = activity.getResources().getIdentifier("wasm_state", "id", activity.getPackageName());
         settingsPage = new NativeSettings(this);
         pluginPages = new PluginPages(this);
     }
@@ -470,7 +473,7 @@ final class NativeDiscordUi {
     Iterable<Node> visibleNodes() { return nodes.values(); }
     Integer parentId(int id) { return parents.get(id); }
     void changeDraft(android.view.View input, String text) throws ReflectiveOperationException {
-        render.changeDraft(renderer, input, text);
+        render.changeDraft(renderer, viewState(input), text);
     }
     android.view.View nativeView(int id) throws IllegalAccessException { return render.view(renderer, id); }
     PhoenixRender.Builder copyBatch(PhoenixRender.Batch batch) throws ReflectiveOperationException { return render.addTo(batch); }
@@ -579,8 +582,10 @@ final class NativeDiscordUi {
         return false;
     }
 
+    private Object viewState(android.view.View view) { return viewStateTag == 0 ? null : view.getTag(viewStateTag); }
+
     boolean overlayEvent(android.view.View view, String event) {
-        Object state = view.getTag(0x7f0a0567);
+        Object state = viewState(view);
         if (state == null || !("dismiss".equals(event) || "exitEnd".equals(event))) return false;
         try {
             int id = state.getClass().getField("a").getInt(state);

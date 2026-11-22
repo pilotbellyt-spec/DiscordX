@@ -40,7 +40,7 @@ final class ChatBridge implements Chat {
     }
     @Override public Registration slashCommand(String name, String description, Consumer<String> execute) {
         main();
-        if (!name.matches("[a-z][a-z0-9_-]{0,31}") || scope.manager.commands.stream().anyMatch(item -> item.name.equals(name)))
+        if (name == null || !name.matches("[a-z][a-z0-9_-]{0,31}") || scope.manager.commands.stream().anyMatch(item -> item.name.equals(name)))
             throw new IllegalArgumentException("Invalid or duplicate command name");
         PluginUiBridge.Command item = new PluginUiBridge.Command(scope, name, description, Objects.requireNonNull(execute));
         return add(scope.manager.commands, item);

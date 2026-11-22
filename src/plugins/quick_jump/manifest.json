@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "quick_jump",
   "name": "Quick Jump",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "DiscordX",
   "description": "Open Discord channel, message, and profile links.",
   "entrypoint": "discordx.plugins.quick_jump.Plugin",
@@ -12,6 +12,8 @@
     356207
   ],
   "requires": [
-    "ui.settings"
+    "ui.settings",
+    "ui.commands",
+    "ui.pages"
   ]
 }

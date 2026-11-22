@@ -44,11 +44,8 @@ final class PluginUiBridge implements PluginUi {
         return scope.ownUi(() -> { scope.manager.messageActions.remove(item); scope.manager.changed(); });
     }
     @Override public Registration command(String name, String description, Runnable action) {
-        checkUi();
-        Command item = new Command(scope, name, description, action);
-        scope.manager.commands.add(item);
-        scope.manager.changed();
-        return scope.ownUi(() -> { scope.manager.commands.remove(item); scope.manager.changed(); });
+        java.util.Objects.requireNonNull(action);
+        return scope.chat().slashCommand(name, description, args -> action.run());
     }
 
     @Override public void refresh() {
@@ -104,9 +101,6 @@ final class PluginUiBridge implements PluginUi {
         final String name, description;
         final Runnable action;
         final Consumer<String> execute;
-        Command(PluginScope scope, String name, String description, Runnable action) {
-            this(scope, name, description, args -> action.run());
-        }
         Command(PluginScope scope, String name, String description, Consumer<String> execute) {
             this.scope = scope; this.name = name; this.description = description;
             this.execute = execute; this.action = () -> execute.accept("");

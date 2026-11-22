@@ -114,6 +114,8 @@ Use `context.chat()` from the main thread for UI registrations. List the capabil
 | `chat.local_messages` | `localMessage(channelId, text)` displays a local message above the selected channel's composer. |
 | `chat.cache` | `selectedChannel()`, `cachedMessage(channelId, messageId)`, and `queryCache(select, arguments...)` read the account's Phoenix SQLite cache. Call these on a worker thread. |
 
+Both command APIs share one namespace. Names must match `[a-z][a-z0-9_-]{0,31}`. A duplicate registration throws `IllegalArgumentException`. Closing the registration releases the name.
+
 A local message or reply returns a handle with `edit(text)` and `close()`. These entries live for the plugin session. Cache queries bind string parameters to `?`, return at most 500 rows and 1 MiB of JSON, and encode BLOB columns as Base64. An empty cache or ambiguous account selection returns no records.
 
 ```java

@@ -86,10 +86,9 @@ final class PhoenixRender {
     }
 
     @SuppressWarnings("unchecked")
-    void changeDraft(Object renderer, android.view.View input, String text) throws ReflectiveOperationException {
+    void changeDraft(Object renderer, Object state, String text) throws ReflectiveOperationException {
         // Deliver the same changeText notification as the input control before allowing submit.
         Object dispatcher = renderer.getClass().getField("l").get(renderer);
-        Object state = input.getTag(0x7f0a0567);
         if (state == null) throw new IllegalStateException("Composer view state is unavailable");
         Class<?> payloadClass = payloadFields.getDeclaringClass();
         Object payload = payloadClass.getConstructor().newInstance();
