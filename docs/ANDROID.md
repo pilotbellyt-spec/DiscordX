@@ -2,7 +2,7 @@
 
 DiscordX supports Discord Phoenix build **356207**, **hdpi**, and either **arm64-v8a** or **x86_64**. Most Android phones use arm64. x86_64 builds require an x86_64 Android device or emulator.
 
-Open Phoenix **Settings → DiscordX Plugins**. **Ctrl+Shift+X** also opens the manager from supported Settings screens. Search installed plugins, view their details, and enable or disable them. The ten bundled plugins start disabled on a fresh installation.
+Open Phoenix **Settings → DiscordX Plugins**. **Ctrl+Shift+X** also opens the manager from supported Settings screens. Search installed plugins, view their details, and enable or disable them. The bundled plugins start disabled on a fresh installation.
 
 ## Manage packages
 
@@ -22,6 +22,11 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **Quick Jump** opens a pasted Discord channel, message, or profile link through Discord's Android route handling. Open its settings page to enter the link.
 - **Screen Share Privacy** sets Android's `FLAG_SECURE` on the main window to restrict screenshots and screen sharing while enabled.
 - **Copy Profile Link** adds a copy action to supported profiles with a verified user ID.
+- **HideTyping** suppresses outgoing typing notifications.
+- **DeArrow** replaces eligible YouTube embed titles and thumbnails with community branding. It sends video IDs to DeArrow. Additional uncached videos in a batch may update when the messages load again.
+- **MessageLatency** shows the delay between a message nonce and its server ID for delays of 2 to under 120 seconds. Messages without a timestamp-bearing nonce have no label.
+- **NoProfileThemes** removes profile accent and theme colors locally.
+- **Translate** adds a message action that sends the selected message to Google Translate. Set the target language code in plugin settings. It defaults to the device language.
 
 Each built-in is a separate DEX ZIP under `src/plugins/`. See the [plugin API](PLUGIN_API.md).
 

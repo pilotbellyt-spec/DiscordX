@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "hide_typing",
+  "name": "HideTyping",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Hide your typing indicator.",
+  "entrypoint": "discordx.plugins.hide_typing.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "http_request"
+  ]
+}

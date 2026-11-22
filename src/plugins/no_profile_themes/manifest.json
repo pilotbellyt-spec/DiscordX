@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "no_profile_themes",
+  "name": "NoProfileThemes",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Use the default colors on user profiles.",
+  "entrypoint": "discordx.plugins.no_profile_themes.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "http_body"
+  ]
+}

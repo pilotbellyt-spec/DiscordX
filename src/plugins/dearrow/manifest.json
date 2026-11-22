@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "dearrow",
+  "name": "DeArrow",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Use community titles and thumbnails in YouTube embeds.",
+  "entrypoint": "discordx.plugins.dearrow.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "gateway_json",
+    "http_body"
+  ]
+}

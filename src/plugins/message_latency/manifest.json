@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "message_latency",
+  "name": "MessageLatency",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Show send delays of two seconds or more.",
+  "entrypoint": "discordx.plugins.message_latency.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "gateway_json",
+    "display_text",
+    "http_body"
+  ]
+}

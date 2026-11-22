@@ -41,10 +41,11 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             manager = new PluginManager(target);
             manager.initializeOnce();
             manager.disableAll();
-            check(manager.entries.size() == 10, "Ten independently packaged built-ins discovered");
+            check(manager.entries.size() == 15, "Fifteen independently packaged built-ins discovered");
             for (PluginManager.Entry entry : new java.util.ArrayList<>(manager.entries.values())) {
                 manager.toggle(entry);
                 check(entry.status == PluginManager.Status.RUNNING, "Loaded built-in: " + entry.pack.id + " " + entry.error);
+                checkBundledHooks(entry.pack.id);
                 manager.stop(entry);
             }
             check(manager.settings.isEmpty() && manager.profiles.isEmpty(), "Built-in UI registrations removed on stop");
@@ -105,6 +106,42 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
         } catch (Throwable error) { finishReport(error); }
     }
 
+    private void checkBundledHooks(String id) throws Exception {
+        String api = "https://discord.com/api/v9/";
+        String channel = api + "channels/123456789012345678/";
+        switch (id) {
+            case "hide_typing":
+                Hooks.Reply reply = manager.hooks.fold(Hooks.HTTP_REQUEST, (Hooks.Reply) null,
+                    (filter, value) -> filter.apply(new Hooks.Request(channel + "typing", "POST")));
+                check(reply != null && reply.status == 204, "HideTyping handles the typing POST locally");
+                check(manager.hooks.fold(Hooks.HTTP_REQUEST, (Hooks.Reply) null,
+                    (filter, value) -> filter.apply(new Hooks.Request(channel + "messages", "POST"))) == null,
+                    "HideTyping passes message sends through");
+                break;
+            case "no_profile_themes":
+                String profile = body(api + "users/123456789012345678/profile", "{\"user_profile\":{\"theme_colors\":[1,2],\"bio\":\"test\"}}");
+                org.json.JSONObject data = new org.json.JSONObject(profile).getJSONObject("user_profile");
+                check(data.isNull("theme_colors") && "test".equals(data.getString("bio")), "NoProfileThemes preserves other profile fields");
+                break;
+            case "message_latency":
+                String history = body(channel + "messages", "[{\"id\":\"1000000012582912000\",\"nonce\":\"1000000000000000000\",\"content\":\"test\"}]");
+                String marked = new org.json.JSONArray(history).getJSONObject(0).getString("content");
+                CharSequence label = manager.hooks.fold(Hooks.DISPLAY_TEXT, (CharSequence) marked, (filter, value) -> filter.apply(value));
+                check(label.toString().endsWith("3.00 s") && "test".contentEquals(discordx.api.TextTokens.clean(marked)),
+                    "MessageLatency renders a three-second delay and preserves copied text");
+                break;
+            case "translate":
+                check(manager.messageActions.size() == 1 && manager.settings.size() == 1, "Translate registers message action and language setting");
+                break;
+        }
+    }
+
+    private String body(String url, String json) {
+        byte[] bytes = manager.hooks.fold(Hooks.HTTP_BODY, json.getBytes(StandardCharsets.UTF_8),
+            (filter, value) -> filter.transform(url, value));
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
     private void afterCallbackFailure(PluginPackage example) {
         try {
             PluginManager.Entry entry = manager.entries.get(example.info.id);
@@ -128,7 +165,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             }
             PluginManager reloaded = new PluginManager(target);
             reloaded.initializeOnce();
-            check(reloaded.entries.size() == 10, "Installed package selection persists across manager restart");
+            check(reloaded.entries.size() == 15, "Installed package selection persists across manager restart");
             manager.main.postDelayed(() -> {
                 try { check(!manager.preferences(example.info.id).getBoolean("async", true), "Managed asynchronous callbacks cannot run after disable"); finishReport(null); }
                 catch (Throwable error) { finishReport(error); }

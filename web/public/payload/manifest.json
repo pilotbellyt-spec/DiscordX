@@ -10,12 +10,17 @@
     "plugins/copy_clean_links.zip": "e6d6f92b6240fbcab2967204e1af05c128083a85e2d936c99f3c4662a83af0ba",
     "plugins/copy_profile_link.zip": "0768c88190913af5b0403a0d737307e85529ef2e1388ee45ba5cda5fd013a6c9",
     "plugins/custom_themes.zip": "f9a1086a4c65c00469dcb56d7d953d03f2db4cdbd16fb718455a71aef0935a1c",
+    "plugins/dearrow.zip": "47b028b550c8c46923db6355b20b097b1d30fcd26ef02e87eb867d3317583a40",
     "plugins/external_browser.zip": "e4042a0d1c7d73ef5a195757070676ecda6a86c326ee86418e9be37ef84a35d3",
-    "plugins/index.json": "4008d3529d1637f8ced8a6e4e0bccedb31a10aeff0b300c35b43d374984994b2",
+    "plugins/hide_typing.zip": "9826990184ae1940b2a35a6b0908272b778ac1741966455f408874c4a01bf34e",
+    "plugins/index.json": "423146ff111b5fe060ea90abc7e2c09c65a717814f4ef599847c7cfdde79e6f3",
+    "plugins/message_latency.zip": "b5e825b6744d6c70072724139326a1e910bf46ab61da7c432ddf8a9caa1f3568",
     "plugins/message_logger.zip": "12a378b889d799f3bcd7707f2c55430175360f1241f4fe5b0533d7f3ec81e77b",
+    "plugins/no_profile_themes.zip": "2967f3dcb08ed3c88d62f664846e04513f0961af027e2123b651dd33098459a6",
     "plugins/quick_jump.zip": "fddbb483bc3e8032564c1ce485e490b1365048afb658a1e6631d3a7ea0b3b872",
     "plugins/reduced_motion.zip": "0ccbd97e76e1cbed3b822a7fd1f32d141fc23ee5ccfbcd45c293285e82a981ca",
     "plugins/review_db.zip": "01a9674d1e23f029134162ee5253df70f922787867a32c1e6ec09567942093b7",
-    "plugins/screen_guard.zip": "a662e8a9710126554790d0ad25b1e707109d03455064a5bd93bd0278d5f41428"
+    "plugins/screen_guard.zip": "a662e8a9710126554790d0ad25b1e707109d03455064a5bd93bd0278d5f41428",
+    "plugins/translate.zip": "7c7c8a8b25f910f80433bb01da38158e9d1d4a62b95d9c01f8c8ab8c5b274a6b"
   }
 }

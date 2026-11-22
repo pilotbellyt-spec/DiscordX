@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "translate",
+  "name": "Translate",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Translate a selected message with Google Translate.",
+  "entrypoint": "discordx.plugins.translate.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "ui.message_actions",
+    "ui.pages",
+    "ui.settings"
+  ]
+}
