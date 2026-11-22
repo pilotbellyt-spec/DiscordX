@@ -1,0 +1,11 @@
+__pycache__/
+*.jks
+*.keystore
+*.p12
+src/dist/
+src/.cache/
+src/.local/
+web/node_modules/
+web/.wrangler/
+web/public/patch.wasm
+web/public/payload/host.dex

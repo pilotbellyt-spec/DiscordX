@@ -1,0 +1,10 @@
+{
+  "version": 356207,
+  "sourceDexSha256": "6b8c8374f9aa93114dc9a4e3d6847883503607416831de2b4c09fcee285c5b5c",
+  "hostDexSha256": "a19ab841af3173a8fe563ab05abddc2d87ae542366efc834694e2e78e9f5bf02",
+  "files": {
+    "host.patch": "24a074f1df37e1ac7200bae9bf357c3b3b10ce8d2d741ad06ac7ce0f96f030a1",
+    "bootstrap.dex": "85a91707a0d47dac14515d974b0aed79b842580350230da48c3cacc9df88aeca",
+    "module.dex": "668255487ba3909f8f3d735f7dbd8d982afecea6b5e3e0e61019a035bfecf067"
+  }
+}

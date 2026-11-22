@@ -1,0 +1,637 @@
+package discordx;
+
+import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.res.Configuration;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+final class NativeDiscordUi {
+    private static final String TAG = "DiscordX";
+    private static final Pattern AVATAR = Pattern.compile(
+        "https://(?:cdn\\.discordapp\\.com|media\\.discordapp\\.net)/(?:avatars/|guilds/[0-9]+/users/)([1-9][0-9]{16,19})(?:/avatars)?/[a-zA-Z0-9_]+\\.[a-zA-Z0-9]+(?:\\?[^#]*)?");
+    final Activity activity;
+    final Handler main = new Handler(Looper.getMainLooper());
+    final Map<Integer, NativeControls.Action> events = new HashMap<>();
+    private final Map<Integer, Node> nodes = new HashMap<>();
+    private final Map<Integer, Integer> parents = new HashMap<>();
+    private final Set<Integer> settings = new HashSet<>(), profiles = new HashSet<>(), membership = new HashSet<>();
+    private final Map<Integer, Insertion> insertions = new HashMap<>();
+    private final Map<String, Long> colors = new HashMap<>();
+    private final NativeSettings settingsPage;
+    private final NativeReviews reviews;
+    private int sequence = 0x70000000;
+    private boolean submitting, loggedFailure;
+    private PhoenixRender render;
+    private Object renderer;
+    private boolean reportedProfile;
+    private boolean reportedMissingScope;
+    private final Set<String> profileDiagnostics = new HashSet<>();
+
+    NativeDiscordUi(Activity activity) {
+        this.activity = activity;
+        settingsPage = new NativeSettings(this);
+        reviews = new NativeReviews(this);
+    }
+
+    int nextId() { return sequence++; }
+    boolean isDark() {
+        Long value = colors.get("text");
+        if (value != null) return android.graphics.Color.luminance(value.intValue()) > 0.5;
+        return (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+            != Configuration.UI_MODE_NIGHT_NO;
+    }
+
+    long color(String role, int fallback) {
+        return colors.getOrDefault(role, NativeControls.color(fallback));
+    }
+
+    Object onBatch(Object owner, Object incoming) {
+        if (submitting || activity.isDestroyed()) return incoming;
+        try {
+            if (render == null) {
+                render = new PhoenixRender(activity.getClassLoader());
+                Log.i(TAG, "DiscordX attached to decoded Phoenix rendering");
+            }
+            if (renderer != null && renderer != owner) reset();
+            renderer = owner;
+            PhoenixRender.Batch batch = render.read(incoming);
+            Set<Integer> changed = observe(batch);
+            PhoenixRender.Builder output = null;
+            for (int root : settings) {
+                Node account = find(root, "settings.row.account", 0);
+                if (account == null) continue;
+                Node navigator = ancestor(root, node -> "navigator".equals(node.type));
+                Node list = nodes.get(parents.get(account.id));
+                if (navigator == null || list == null || list.children.length == 0) continue;
+                if (insertions.containsKey(account.id) && !changed.contains(list.id)) continue;
+                learnSettingsColors(account, list, nodes.get(root));
+                if (output == null) output = render.addTo(batch);
+                final int nav = navigator.id;
+                final int page = root;
+                output = place(output, account, list, account.id, ui ->
+                    settingsEntry(ui, batch, account, (event, payload) -> settingsPage.open(nav, page)), false);
+            }
+            boolean review = DiscordX.enabled(activity, "review_db");
+            boolean copy = DiscordX.enabled(activity, "copy_profile_link");
+            Set<Integer> profileLists = new HashSet<>();
+            Set<Integer> anchors = new HashSet<>(profiles);
+            anchors.addAll(membership);
+            if (review || copy) for (int anchor : anchors) {
+                Node marker = nodes.get(anchor);
+                if (marker == null) continue;
+                int member = memberSince(anchor, 0);
+                Node scroll = marker.tag("profile-main-scroll") ? marker : find(anchor, "profile-main-scroll", 0);
+                if (scroll == null && member >= 0) scroll = ancestor(member, node -> "scroll".equals(node.type));
+                if (scroll == null || scroll.children.length == 0) {
+                    traceProfile(marker, "waiting for scroll");
+                    continue;
+                }
+                Node list = profileSections(member, scroll);
+                if (list == null || list.children.length == 0) {
+                    traceProfile(marker, "waiting for content");
+                    continue;
+                }
+                Node profile = profileContainer(scroll.id, marker);
+                if (profile == null) {
+                    traceProfile(marker, "missing profile scope");
+                    if (!reportedMissingScope) Log.i(TAG, "Phoenix profile scroll found outside a supported profile container");
+                    reportedMissingScope = true;
+                    continue;
+                }
+                if (!profileLists.add(list.id)) continue;
+                String knownUser = profileUser(profile.id, 0, true);
+                AvatarMatch avatar = new AvatarMatch();
+                if (knownUser == null || knownUser.isEmpty()) findProfileAvatar(profile.id, 0, avatar);
+                String user = knownUser != null && !knownUser.isEmpty() ? knownUser : avatar.user();
+                if (user == null || user.isEmpty()) {
+                    traceProfile(marker, "missing unambiguous profile identity; avatar size " + avatar.size);
+                    if (!reportedProfile) Log.i(TAG, "Phoenix profile anchor present; waiting for a verified profile identity");
+                    reportedProfile = true;
+                    continue;
+                }
+                Insertion existing = insertions.get(scroll.id);
+                if (existing != null && !changed.contains(list.id) && user.equals(existing.subject)) continue;
+                if (output == null) output = render.addTo(batch);
+                if (existing != null) existing.subject = user;
+                final int profileRoot = profile.id;
+                if (member < 0) member = memberSince(list.id, 0);
+                Node label = nodes.get(member);
+                long foreground = label == null ? 0 : label.color;
+                int after = list.children[list.children.length - 1];
+                int id = member;
+                for (int depth = 0; depth < 12 && id > 0 && parents.containsKey(id); depth++, id = parents.get(id)) {
+                    if (parents.get(id) == list.id) { after = id; break; }
+                }
+                output = place(output, scroll, list, after, ui -> {
+                    long text = foreground == 0 ? ui.text : foreground;
+                    int reviewRow = review ? ui.profileLink("Reviews", "res://ic_mana_star_shooting", text,
+                        (event, payload) -> reviews.open(profileRoot, user)) : -1;
+                    int copyRow = copy ? ui.profileLink("Copy Profile Link", "res://ic_mana_puzzle_piece_plus", text,
+                        (event, payload) -> copy(user)) : -1;
+                    if (!copy) return reviewRow;
+                    if (!review) return copyRow;
+                    int section = ui.column(0, NativeControls.insets(0, 0));
+                    ui.batch.children(section, reviewRow, copyRow);
+                    return section;
+                }, true);
+                insertions.get(scroll.id).subject = user;
+            }
+            return output == null ? incoming : output.build();
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            failure("Could not integrate the Phoenix render batch", error);
+            return incoming;
+        }
+    }
+
+    private interface BuildInsertion { int create(NativeControls ui) throws ReflectiveOperationException; }
+
+    private PhoenixRender.Builder place(PhoenixRender.Builder batch, Node anchor, Node parent, int neighbor,
+            BuildInsertion build, boolean after) throws ReflectiveOperationException {
+        Insertion existing = insertions.get(anchor.id);
+        if (existing != null) discard(batch, existing.ui);
+        NativeControls ui = new NativeControls(this, batch);
+        int row = build.create(ui);
+        int[] children = parent.children;
+        for (int i = 0; i < children.length; i++) if (children[i] == neighbor) {
+            batch.children(parent.id, inserting(children, i + (after ? 1 : 0), row));
+            insertions.put(anchor.id, new Insertion(ui));
+            events.putAll(ui.actions);
+            Log.i(TAG, after ? "ReviewDB profile row in Phoenix batch" : "DiscordX Settings row in Phoenix batch");
+            if (after) main.post(() -> checkProfileRow(row, parent.id));
+            break;
+        }
+        return batch;
+    }
+
+    private Set<Integer> observe(PhoenixRender.Batch batch) throws IllegalAccessException {
+        Set<Integer> changed = new HashSet<>();
+        for (int i = 0; i < batch.count; i++) {
+            int id = batch.id(i);
+            switch (batch.kind(i)) {
+                case PhoenixRender.CREATE:
+                    nodes.put(id, new Node(id, (String) batch.types[i]));
+                    // A create also supplies an initial set of properties.
+                case PhoenixRender.UPDATE:
+                    Node node = nodes.get(id);
+                    if (node == null) break;
+                    for (int p = batch.start(i); p < batch.start(i) + batch.size(i); p++) {
+                        Object value = batch.objects[p];
+                        String key = batch.key(p);
+                        switch (key) {
+                            case "accessibilityId": node.access = string(value); break;
+                            case "nativeID": node.nativeId = string(value); break;
+                            case "text":
+                                node.text = string(value);
+                                if (node.text.isEmpty() && render.containsText(value, "Member Since", 4)) node.text = "Member Since";
+                                break;
+                            case "uri": node.uri = string(value); break;
+                            case "background": node.background = rgba(batch, p); break;
+                            case "color": node.color = rgba(batch, p); break;
+                            case "width": node.width = dimension(batch, p); break;
+                            case "height": node.height = dimension(batch, p); break;
+                            case "radius": node.radius = dimension(batch, p); break;
+                            case "index": node.index = (int) batch.numbers[p]; break;
+                        }
+                        if ("image".equals(node.type) && node.uri.isEmpty() && value instanceof String
+                                && ((String) value).startsWith("https://") && AVATAR.matcher((String) value).matches()) node.uri = (String) value;
+                    }
+                    if (node.tag("settings-phone") || node.tag("settings-tablet")) settings.add(id);
+                    if (node.tag("profile-sheet") || node.tag("profile-main-scroll")) profiles.add(id);
+                    if (node.tag("member-since") || node.tag("member-since-discord") || "Member Since".equals(node.text)) membership.add(id);
+                    break;
+                case PhoenixRender.CHILDREN:
+                    Node parent = nodes.get(id);
+                    if (parent == null) break;
+                    for (int child : parent.children) parents.remove(child, id);
+                    parent.children = batch.children(i);
+                    for (int child : parent.children) parents.put(child, id);
+                    changed.add(id);
+                    break;
+                case PhoenixRender.DELETE:
+                    for (int dead : batch.children(i)) {
+                        Node removed = nodes.remove(dead);
+                        if (removed != null) for (int child : removed.children) parents.remove(child, dead);
+                        parents.remove(dead);
+                        settings.remove(dead);
+                        profiles.remove(dead);
+                        membership.remove(dead);
+                        Insertion entry = insertions.remove(dead);
+                        if (entry != null) main.post(() -> delete(entry.ui));
+                        settingsPage.hostRemoved(dead);
+                        reviews.hostRemoved(dead);
+                    }
+                    break;
+            }
+        }
+        return changed;
+    }
+
+    private void learnSettingsColors(Node row, Node group, Node screen) {
+        if (screen != null && screen.background != 0) colors.put("background", screen.background);
+        long background = row.background != 0 ? row.background : group.background;
+        if (background != 0) colors.put("card", background);
+        Long label = firstTextColor(row, 0);
+        if (label != null) colors.put("text", label);
+    }
+
+    private Long firstTextColor(Node node, int depth) {
+        if (depth > 7) return null;
+        if ("text".equals(node.type) && node.color != 0) return node.color;
+        for (int id : node.children) {
+            Node child = nodes.get(id);
+            if (child == null) continue;
+            Long result = firstTextColor(child, depth + 1);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private String rightmostIcon(Node node, int depth) {
+        if (depth > 7) return "";
+        if ("image".equals(node.type) && node.uri.startsWith("res://")
+                && node.uri.contains("chevron")) return node.uri;
+        for (int i = node.children.length - 1; i >= 0; i--) {
+            Node child = nodes.get(node.children[i]);
+            if (child == null) continue;
+            String icon = rightmostIcon(child, depth + 1);
+            if (!icon.isEmpty()) return icon;
+        }
+        return "";
+    }
+
+    private int settingsEntry(NativeControls ui, PhoenixRender.Batch batch, Node account, NativeControls.Action open)
+            throws ReflectiveOperationException {
+        Set<Integer> created = new HashSet<>();
+        for (int row = 0; row < batch.count; row++) if (batch.kind(row) == PhoenixRender.CREATE) created.add(batch.id(row));
+        Node title = firstOfType(account, "text", 0);
+        Node icon = firstOfType(account, "image", 0);
+        if (title == null || !isStyleTemplate(account, created, 0)) return ui.settingsRow(rightmostIcon(account, 0), open);
+        int entry = mirrorSettings(ui, batch, account, account.id, title.id, icon == null ? -1 : icon.id);
+        ui.actions.put(entry, open);
+        return entry;
+    }
+
+    private boolean isStyleTemplate(Node node, Set<Integer> created, int depth) {
+        if (node == null || depth > 7 || !created.contains(node.id)) return false;
+        if (!("view".equals(node.type) || "text".equals(node.type) || "image".equals(node.type) || "stack".equals(node.type))) {
+            return false;
+        }
+        for (int id : node.children) if (!isStyleTemplate(nodes.get(id), created, depth + 1)) return false;
+        return true;
+    }
+
+    private Node firstOfType(Node node, String type, int depth) {
+        if (node == null || depth > 7) return null;
+        if (type.equals(node.type)) return node;
+        for (int id : node.children) {
+            Node result = firstOfType(nodes.get(id), type, depth + 1);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private int mirrorSettings(NativeControls ui, PhoenixRender.Batch batch, Node source, int root, int title, int icon)
+            throws ReflectiveOperationException {
+        int id = nextId();
+        ui.nodes.add(id);
+        if (source.id == root) ui.batch.mirror(batch, source.id, id, source.type,
+            "on", NativeControls.PRESS, "role", "button", "accessibilityId", "settings.row.discordx",
+            "accessibilityLabel", "DiscordX Plugins");
+        else if (source.id == title) ui.batch.mirror(batch, source.id, id, source.type, "text", "DiscordX Plugins");
+        else if (source.id == icon) ui.batch.mirror(batch, source.id, id, source.type, "uri", "res://ic_mana_puzzle_piece_plus");
+        else ui.batch.mirror(batch, source.id, id, source.type);
+        int[] children = new int[source.children.length];
+        for (int i = 0; i < children.length; i++) {
+            children[i] = mirrorSettings(ui, batch, nodes.get(source.children[i]), root, title, icon);
+        }
+        if (children.length > 0) ui.batch.children(id, children);
+        return id;
+    }
+
+    private Node find(int root, String tag, int depth) {
+        Node node = nodes.get(root);
+        if (node == null || depth > 13) return null;
+        if (node.tag(tag)) return node;
+        for (int id : node.children) {
+            Node hit = find(id, tag, depth + 1);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private int memberSince(int id, int depth) {
+        Node node = nodes.get(id);
+        if (node == null || depth > 10) return -1;
+        if (node.tag("member-since") || node.tag("member-since-discord") || "Member Since".equals(node.text)) return id;
+        for (int child : node.children) {
+            int match = memberSince(child, depth + 1);
+            if (match >= 0) return match;
+        }
+        return -1;
+    }
+
+    private Node below(int id, int parent) {
+        for (int depth = 0; depth < 12 && parents.containsKey(id); depth++) {
+            int next = parents.get(id);
+            if (next == parent) return nodes.get(id);
+            id = next;
+        }
+        return null;
+    }
+
+    private Node profileSections(int member, Node scroll) {
+        if (member < 0) return nodes.get(scroll.children[0]);
+        int id = member;
+        for (int depth = 0; depth < 8 && parents.containsKey(id); depth++) {
+            id = parents.get(id);
+            if (id == scroll.id) break;
+            Node node = nodes.get(id);
+            if (node != null && node.children.length >= 2
+                    && (containsLabel(id, "Connections", 0) || containsLabel(id, "Roles", 0))) return node;
+        }
+        return below(member, scroll.id);
+    }
+
+    private void checkProfileRow(int row, int parentId) {
+        try {
+            android.view.View view = render.view(renderer, row);
+            android.view.View parent = render.view(renderer, parentId);
+            if (view == null) {
+                Log.w(TAG, "Phoenix did not create the injected Reviews view");
+                return;
+            }
+            view.postOnAnimation(() -> Log.i(TAG, "Phoenix Reviews view " + view.getWidth() + "x" + view.getHeight()
+                + ", attached=" + view.isAttachedToWindow() + ", parent=" + (view.getParent() == parent)));
+        } catch (IllegalAccessException error) {
+            failure("Could not inspect the Phoenix Reviews view", error);
+        }
+    }
+
+    private Node profileContainer(int scroll, Node marker) {
+        if (marker.tag("profile-sheet")) return marker;
+        Node named = ancestor(scroll, node -> node.tag("profile-sheet") || node.tag("profile-page"));
+        if (named != null && profileUser(named.id, 0, true) != null) return named;
+        Node overlay = ancestor(scroll, node -> "sheet".equals(node.type) || "modal".equals(node.type)
+            || "popover".equals(node.type));
+        if (overlay != null) return overlay;
+        return ancestor(scroll, node -> find(node.id, "profile-tabs", 0) != null
+            || containsLabel(node.id, "Main", 0) && containsLabel(node.id, "Activity", 0));
+    }
+
+    private boolean containsLabel(int id, String label, int depth) {
+        Node node = nodes.get(id);
+        if (node == null || depth > 7) return false;
+        if (label.equals(node.text)) return true;
+        for (int child : node.children) if (containsLabel(child, label, depth + 1)) return true;
+        return false;
+    }
+
+    private void traceProfile(Node marker, String reason) {
+        if (!membership.contains(marker.id) || profileDiagnostics.size() >= 6) return;
+        StringBuilder types = new StringBuilder(marker.type);
+        int id = marker.id;
+        for (int depth = 0; depth < 10 && parents.containsKey(id); depth++) {
+            id = parents.get(id);
+            Node node = nodes.get(id);
+            if (node != null) types.append('/').append(node.type);
+        }
+        String message = "Phoenix profile render " + reason + " (" + types + ")";
+        if (profileDiagnostics.add(message)) Log.i(TAG, message);
+    }
+
+    private String profileUser(int root, int depth, boolean preferred) {
+        Node node = nodes.get(root);
+        if (node == null || depth > 10) return null;
+        String result = node.profileId(preferred);
+        if (result == null && preferred && (node.access.startsWith("profile-avatar-") || node.nativeId.startsWith("profile-avatar-"))) {
+            result = profileUser(root, 0, false);
+        }
+        if (result != null) return result;
+        for (int child : node.children) {
+            String candidate = profileUser(child, depth + 1, preferred);
+            if (candidate == null) continue;
+            if (result != null && !result.equals(candidate)) return "";
+            result = candidate;
+        }
+        return result;
+    }
+
+    private void findProfileAvatar(int id, int depth, AvatarMatch best) {
+        Node node = nodes.get(id);
+        if (node == null || depth > 12) return;
+        String user = node.profileId(false);
+        if (user != null) {
+            int size = node.avatarSize();
+            Node parent = nodes.get(parents.get(id));
+            if (size == 0 && parent != null) size = parent.avatarSize();
+            best.offer(user, size);
+        }
+        String name = node.text;
+        if ("text".equals(node.type) && name.length() <= 48) {
+            int space = name.indexOf(' ');
+            if (space >= 0) name = name.substring(0, space);
+            String verified = ProfileIdentity.forUsername(name);
+            if (verified != null) best.offer(verified, 12);
+        }
+        for (int child : node.children) findProfileAvatar(child, depth + 1, best);
+    }
+
+    private Node ancestor(int id, java.util.function.Predicate<Node> test) {
+        for (int i = 0; i < 14 && parents.containsKey(id); i++) {
+            id = parents.get(id);
+            Node node = nodes.get(id);
+            if (node != null && test.test(node)) return node;
+        }
+        return null;
+    }
+
+    Node node(int id) { return nodes.get(id); }
+    PhoenixRender.Builder builder() throws ReflectiveOperationException { return render.addTo(null); }
+    String inputText(Object payload) throws IllegalAccessException { return render.inputText(payload); }
+
+    void submit(PhoenixRender.Builder batch) throws ReflectiveOperationException {
+        if (renderer == null || activity.isDestroyed()) return;
+        submitting = true;
+        try {
+            render.submit(renderer, batch);
+        } finally {
+            submitting = false;
+        }
+    }
+
+    void delete(NativeControls ui) {
+        try {
+            PhoenixRender.Builder batch = builder();
+            discard(batch, ui);
+            submit(batch);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            failure("Could not remove a Phoenix render scope", error);
+        }
+    }
+
+    void discard(PhoenixRender.Builder batch, NativeControls ui) {
+        events.keySet().removeAll(ui.actions.keySet());
+        batch.delete(ui.nodeIds());
+    }
+
+    boolean event(int id, String event, Object payload, Object completion) {
+        NativeControls.Action action = events.get(id);
+        if (action == null && settingsPage.intercepts(id, event)) action = (name, data) -> settingsPage.close();
+        if (action == null && (id < 0x70000000 || id >= sequence)) return false;
+        final NativeControls.Action task = action;
+        main.post(() -> {
+            try {
+                if (task != null && !activity.isDestroyed()) task.run(event, payload);
+            } catch (Exception error) {
+                failure("Phoenix plugin action failed", error);
+            } finally {
+                try {
+                    if (render != null) render.complete(completion);
+                } catch (ReflectiveOperationException error) {
+                    failure("Phoenix plugin action did not complete", error);
+                }
+            }
+        });
+        return true;
+    }
+
+    boolean back() { return settingsPage.back(); }
+
+    boolean settingsShortcut() {
+        if (settingsPage.back()) return true;
+        for (int overview : settings) {
+            Node nav = ancestor(overview, node -> "navigator".equals(node.type));
+            if (nav == null || nav.children.length == 0) continue;
+            int index = nav.index < 0 ? nav.children.length - 1 : nav.index;
+            if (index >= nav.children.length) continue;
+            int selected = nav.children[index];
+            if (overview != selected && ancestor(overview, node -> node.id == selected) == null) continue;
+            main.post(() -> {
+                try {
+                    settingsPage.open(nav.id, overview);
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    failure("Could not open the Phoenix settings page", error);
+                }
+            });
+            return true;
+        }
+        return false;
+    }
+
+    boolean overlayEvent(android.view.View view, String event) {
+        Object state = view.getTag(0x7f0a0567);
+        if (state == null || !("dismiss".equals(event) || "exitEnd".equals(event))) return false;
+        try {
+            return reviews.overlayEvent(state.getClass().getField("a").getInt(state), event);
+        } catch (ReflectiveOperationException error) {
+            failure("Could not identify the Phoenix modal event", error);
+            return false;
+        }
+    }
+    void reset() {
+        if (renderer != null) reviews.reset();
+        events.clear();
+        nodes.clear();
+        parents.clear();
+        settings.clear();
+        profiles.clear();
+        membership.clear();
+        insertions.clear();
+        settingsPage.reset();
+    }
+
+    void failure(String message, Throwable error) {
+        if (!loggedFailure) Log.w(TAG, message, error);
+        loggedFailure = true;
+    }
+
+    private void copy(String user) {
+        ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
+        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Discord profile link", "https://discord.com/users/" + user));
+    }
+
+    private static String string(Object value) { return value instanceof String ? (String) value : ""; }
+
+    private static long rgba(PhoenixRender.Batch batch, int p) {
+        return batch.tags[p] == 3 || batch.tags[p] == 4 ? batch.numbers[p] & 0xffffffffL : 0;
+    }
+
+    private static int dimension(PhoenixRender.Batch batch, int slot) {
+        if (batch.tags[slot] == 5) return (int) Math.round(Double.longBitsToDouble(batch.numbers[slot]));
+        if (batch.tags[slot] == 3 || batch.tags[slot] == 4) return (int) batch.numbers[slot];
+        return 0;
+    }
+
+    static int[] inserting(int[] original, int index, int id) {
+        int[] next = Arrays.copyOf(original, original.length + 1);
+        System.arraycopy(original, index, next, index + 1, original.length - index);
+        next[index] = id;
+        return next;
+    }
+
+    private static final class Insertion {
+        final NativeControls ui;
+        String subject;
+        Insertion(NativeControls ui) { this.ui = ui; }
+    }
+
+    private static final class AvatarMatch {
+        int size = -1;
+        String id;
+        boolean ambiguous;
+
+        void offer(String user, int candidate) {
+            if (candidate < size) return;
+            if (candidate > size) {
+                size = candidate;
+                id = user;
+                ambiguous = false;
+            } else if (!user.equals(id)) ambiguous = true;
+        }
+
+        String user() { return ambiguous ? null : id; }
+    }
+
+    static final class Node {
+        final int id;
+        final String type;
+        String access = "", nativeId = "", text = "", uri = "";
+        long color, background;
+        int width, height, radius;
+        int index = -1;
+        int[] children = {};
+
+        Node(int id, String type) { this.id = id; this.type = type; }
+        boolean tag(String name) { return name.equals(access) || name.equals(nativeId); }
+
+        int avatarSize() {
+            if (width >= 48 && width <= 144 && Math.abs(width - height) <= 2) return width;
+            return radius >= 24 && radius <= 72 ? radius * 2 : 0;
+        }
+
+        String profileId(boolean preferred) {
+            if (!preferred) {
+                Matcher avatar = AVATAR.matcher(uri);
+                return avatar.matches() ? avatar.group(1) : null;
+            }
+            for (String name : new String[] {access, nativeId}) {
+                if (!name.startsWith("profile-avatar-")) continue;
+                String id = name.substring("profile-avatar-".length());
+                if (MessageLogger.snowflake(id)) return id;
+                Matcher avatar = AVATAR.matcher(uri);
+                if (avatar.matches()) return avatar.group(1);
+            }
+            return tag("profile-user-tag") ? ProfileIdentity.forUsername(text) : null;
+        }
+    }
+}

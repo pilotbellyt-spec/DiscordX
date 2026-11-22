@@ -1,0 +1,11 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {build} from '../public/builder.mjs';
+const [basePath,abiPath,densityPath,architecture,output]=process.argv.slice(2);
+if(!output) throw new Error('Usage: node check-build.mjs base.apk abi.apk hdpi.apk arm64-v8a|x86_64 output.apk');
+const assets=new URL('../public/',import.meta.url);
+const bytes=async path=>new Uint8Array(await readFile(path));
+const payload={manifest:JSON.parse(await readFile(new URL('payload/manifest.json',assets),'utf8'))};
+for(const file of Object.keys(payload.manifest.files)) payload[file]=await bytes(new URL(`payload/${file}`,assets));
+const parts=await build({base:await bytes(basePath),abi:await bytes(abiPath),density:await bytes(densityPath),architecture,payload,identity:JSON.parse(await readFile(new URL('signing-key.json',assets),'utf8')),wasm:await readFile(new URL('patch.wasm',assets)),log:console.log});
+await writeFile(output,Buffer.concat(parts));
+console.log(output);

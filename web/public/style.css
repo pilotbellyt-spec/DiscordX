@@ -1,0 +1,27 @@
+:root{color-scheme:dark;--bg:#111214;--panel:#1b1d21;--control:#282b31;--text:#f2f3f5;--muted:#b5bac4;--accent:#aab7ff;font-family:Inter,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+*{box-sizing:border-box;scrollbar-color:#53596b var(--panel);scrollbar-width:thin}
+body{margin:0}main{max-width:600px;margin:0 auto;padding:32px 22px}
+header{margin-bottom:20px}.wordmark{display:inline-flex;align-items:center;min-height:48px;font-size:23px;font-weight:750;letter-spacing:-.04em;color:var(--text);text-decoration:none}.wordmark span{color:var(--accent)}
+.tabs{display:flex;border-bottom:1px solid #35373e;margin-bottom:20px;gap:24px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:14px 0;margin-bottom:-1px;color:var(--muted);font-weight:600}
+.tabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
+.panel{background:var(--panel);border-radius:12px;padding:22px;margin-bottom:18px}
+#download-panel,#local-panel{margin-bottom:24px}
+label{display:block;font-size:14px;font-weight:650;margin-bottom:10px}
+select{width:100%;min-height:48px;padding:0 14px;border:1px solid #454851;border-radius:7px;background:var(--control);color:var(--text);font:inherit;cursor:pointer}
+.help{font-size:13px;color:var(--muted);margin:10px 0 0;overflow-wrap:anywhere}
+button,.primary{font:inherit;min-height:48px;border:0;border-radius:7px;cursor:pointer}
+#build,.primary{display:block;width:100%;background:var(--accent);color:#161b36;font-weight:650;padding:14px;text-align:center;text-decoration:none}
+#build:hover,.primary:hover{background:#c0caff}button:disabled{opacity:.55;cursor:wait}
+#cancel{width:100%;background:var(--control);color:var(--text);margin-top:10px}
+.dropzone{padding:20px;border:1px dashed #676e80;border-radius:7px;text-align:center}
+.dropzone span{display:block;color:var(--muted);font-size:13px;margin:8px 0 16px}
+input[type=file]{font-size:12px;max-width:100%;color:var(--muted)}
+input::file-selector-button{padding:8px;border:0;border-radius:4px;background:var(--control);color:var(--text)}
+h2{font-size:16px;margin:0}.status-heading{display:flex;justify-content:space-between;gap:12px}
+#status-panel{margin-top:18px}#elapsed{color:var(--muted);font-variant-numeric:tabular-nums}
+progress{width:100%;height:6px;margin:18px 0;accent-color:var(--accent)}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;font:12px/1.6 Consolas,monospace;color:var(--muted);margin:0}
+#error{color:#ffb4b4;font-size:14px}#result{margin-top:20px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:4px}::selection{background:#48569a;color:white}
+[hidden]{display:none!important}@media(max-width:440px){main{padding:20px 16px}.panel{padding:18px}}

@@ -1,0 +1,14 @@
+{
+  "name": "discordx-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build-wasm.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wabt": "1.0.39",
+    "wrangler": "4.166.0"
+  }
+}
