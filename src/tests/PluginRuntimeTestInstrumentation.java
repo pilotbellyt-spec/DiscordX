@@ -26,6 +26,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
     @Override public void onStart() {
         target = getTargetContext();
         try {
+            verifyQuickJumpNavigation();
             runOnMainSync(this::runChecks);
             if (!completed.await(30, TimeUnit.SECONDS)) {
                 runOnMainSync(() -> finishReport(new AssertionError("Timed out waiting for asynchronous checks")));
@@ -34,6 +35,35 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
         Bundle results = new Bundle();
         results.putString("stream", report.toString());
         finish(passed ? -1 : 0, results);
+    }
+
+    private void verifyQuickJumpNavigation() {
+        String url = "https://discord.com/channels/@me/123456789012345678/223456789012345678";
+        android.content.Intent[] opened = {null};
+        runOnMainSync(() -> {
+            Context fixture = new android.content.ContextWrapper(target) {
+                @Override public Context getApplicationContext() { return this; }
+                @Override public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
+                    return target.getSharedPreferences("quick_jump_test." + name, mode);
+                }
+            };
+            manager = new PluginManager(fixture);
+            manager.initializeOnce();
+            manager.disableAll();
+            manager.activity = new android.app.Activity() {
+                @Override public void startActivity(android.content.Intent intent) { opened[0] = intent; }
+            };
+            manager.toggle(manager.entries.get("quick_jump"));
+            manager.hooks.each(Hooks.LOCAL_COMMAND, handler -> handler.accept("quick-jump", "link:" + url));
+        });
+        // The plugin posts navigation after Phoenix clears the composer.
+        runOnMainSync(() -> {
+            manager.disableAll();
+            manager.background.shutdownNow();
+        });
+        check(opened[0] != null && android.content.Intent.ACTION_VIEW.equals(opened[0].getAction())
+                && url.equals(opened[0].getDataString()) && target.getPackageName().equals(opened[0].getPackage()),
+            "Quick Jump opens the exact submitted message link in the current app");
     }
 
     private void runChecks() {
@@ -156,6 +186,20 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                 CharSequence label = manager.hooks.fold(Hooks.DISPLAY_TEXT, (CharSequence) marked, (filter, value) -> filter.apply(value));
                 check(label.toString().endsWith("3.00 s") && "test".contentEquals(discordx.api.TextTokens.clean(marked)),
                     "MessageLatency renders a three-second delay and preserves copied text");
+                break;
+            case "quick_jump":
+                String index = api + "guilds/123456789012345678/application-command-index";
+                String empty = "{\"applications\":[],\"application_commands\":[]}";
+                String added = body(index, empty);
+                org.json.JSONObject catalog = new org.json.JSONObject(added);
+                org.json.JSONObject command = catalog.getJSONArray("application_commands").getJSONObject(0);
+                org.json.JSONObject option = command.getJSONArray("options").getJSONObject(0);
+                check("quick-jump".equals(command.getString("name")) && "link".equals(option.getString("name"))
+                        && option.getBoolean("required") && option.getInt("type") == 3
+                        && added.equals(body(index, added)), "Quick Jump publishes one native command with a required string");
+                String other = "{\"applications\":[],\"application_commands\":[{\"id\":\"9\",\"name\":\"quick-jump\"}]}";
+                check(other.equals(body(index, other)) && empty.equals(body(channel + "messages", empty)),
+                    "Quick Jump preserves command-name collisions and unrelated responses");
                 break;
             case "translate":
                 check(manager.messageActions.size() == 1 && manager.settings.size() == 1, "Translate registers message action and language setting");

@@ -19,6 +19,8 @@ public final class Hooks {
     public static final Hook<IntUnaryOperator> FOREGROUND_COLOR = new Hook<>("foreground_color");
     public static final Hook<UnaryOperator<int[]>> GRADIENT = new Hook<>("gradient");
     public static final Hook<java.util.function.Function<String, String>> BEFORE_SEND = new Hook<>("before_send");
+    /** Submission from the native picker for a command contributed by DiscordX Local. */
+    public static final Hook<java.util.function.BiConsumer<String, String>> LOCAL_COMMAND = new Hook<>("local_command");
     public static final Hook<Gateway> GATEWAY = new Hook<>("gateway");
     public static final Hook<HttpResponse> HTTP_RESPONSE = new Hook<>("http_response");
     public static final Hook<java.util.function.Function<Request, Reply>> HTTP_REQUEST = new Hook<>("http_request");

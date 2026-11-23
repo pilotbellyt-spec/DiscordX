@@ -108,6 +108,7 @@ Use `context.chat()` from the main thread for UI registrations. List the capabil
 | --- | --- |
 | `chat.buttons` | `button(HEADER or COMPOSER, title, resourceIcon, pressed)` places an accessible button beside search or the emoji picker. |
 | `chat.commands` | `slashCommand(name, description, args -> ...)` consumes a local command on submission. This local callback does not register a Discord application command. |
+| `local_command` | `Hooks.LOCAL_COMMAND` receives the command name and option text when a user submits a DiscordX Local picker selection. Quick Jump receives `quick-jump` and `link:<value>`. |
 | `before_send` | `beforeSend(text -> ...)` returns the outgoing draft. Return `null` to cancel. Local commands execute first. |
 | `chat.accessories` | `accessory(CONTENT or TIMESTAMP, messageId -> label)` returns a colored label or `null`. `redraw(messageId)` refreshes that message. `tint(id -> argb)` colors its author and content, and restores host colors when removed. |
 | `chat.local_replies` | `reply(messageId, text)` displays a local reply beneath a message. |

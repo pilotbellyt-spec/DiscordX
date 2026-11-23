@@ -200,6 +200,7 @@ final class NativeDiscordUi {
                         Object value = batch.objects[p];
                         String key = batch.key(p);
                         switch (key) {
+                            case "accessibilityLabel": node.label = string(value); break;
                             case "accessibilityId": node.access = string(value); break;
                             case "direction": node.direction = string(value); break;
                             case "nativeID": node.nativeId = string(value); break;
@@ -403,7 +404,7 @@ final class NativeDiscordUi {
             || containsLabel(node.id, "Main", 0) && containsLabel(node.id, "Activity", 0));
     }
 
-    private boolean containsLabel(int id, String label, int depth) {
+    boolean containsLabel(int id, String label, int depth) {
         Node node = nodes.get(id);
         if (node == null || depth > 7) return false;
         if (label.equals(node.text)) return true;
@@ -689,7 +690,7 @@ final class NativeDiscordUi {
     static final class Node {
         final int id;
         final String type;
-        String direction = "", access = "", nativeId = "", text = "", uri = "";
+        String direction = "", access = "", nativeId = "", text = "", uri = "", label = "";
         long color, background;
         int width, height, radius;
         int index = -1;

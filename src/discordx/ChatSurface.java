@@ -19,6 +19,8 @@ final class ChatSurface {
     private final Set<String> redrawIds = new HashSet<>();
     private boolean redrawAll;
     private String channel, channelSignature;
+    private int localCommandInput = -1;
+    private String localCommandLabel = "";
     private int channelGeneration;
     private int localBefore = -1, localParent = -1;
     ChatSurface(NativeDiscordUi owner) { this.owner = owner; }
@@ -40,11 +42,12 @@ final class ChatSurface {
         tinted.remove(id);
         updatedText.remove(id);
         drafts.remove(id);
+        if (id == localCommandInput) localCommandInput = -1;
         NativeControls old = mounted.remove(id);
         if (old != null) owner.main.post(() -> owner.delete(old));
     }
 
-    void reset() { tinted.clear(); updatedText.clear(); redrawIds.clear(); redrawAll = false; localBefore = localParent = -1; channel = null; channelSignature = null; channelGeneration++; mounted.clear(); dirty.clear(); drafts.clear(); anchors.clear(); }
+    void reset() { localCommandInput = -1; tinted.clear(); updatedText.clear(); redrawIds.clear(); redrawAll = false; localBefore = localParent = -1; channel = null; channelSignature = null; channelGeneration++; mounted.clear(); dirty.clear(); drafts.clear(); anchors.clear(); }
     private void mark(int id) {
         Integer parent = owner.parentId(id);
         if (parent != null) dirty.add(parent);
@@ -234,22 +237,36 @@ final class ChatSurface {
 
     boolean event(NativeDiscordUi.Node node, String event, Object payload) throws ReflectiveOperationException {
         if (node == null) return false;
+        if ("press".equals(event) && drafts.size() == 1) rememberCommandSelection(node);
         if (node.tag("composer") && "changeText".equals(event)) {
             String text = owner.inputText(payload);
-            if (text != null) drafts.put(node.id, text);
+            if (text != null) {
+                drafts.put(node.id, text);
+                if (node.id == localCommandInput && !text.startsWith("/")) localCommandInput = -1;
+            }
             return false;
         }
         boolean keyboard = node.tag("composer") && "submit".equals(event);
         if (!keyboard && !(node.tag("send") && "press".equals(event))) return false;
         PluginManager manager = DiscordX.manager;
-        if (manager.commands.isEmpty() && !manager.hooks.has(discordx.api.Hooks.BEFORE_SEND)) return false;
+        if (localCommandInput == -1 && manager.commands.isEmpty() && !manager.hooks.has(discordx.api.Hooks.BEFORE_SEND)) return false;
         if (!keyboard && drafts.size() != 1) return false;
         int input = keyboard ? node.id : drafts.keySet().iterator().next();
         android.view.View view = owner.nativeView(input);
         android.widget.EditText field = findField(view);
         String draft = field == null ? drafts.get(input) : field.getText().toString();
         if (draft == null || draft.isEmpty()) return false;
-        String result = ChatSubmission.apply(manager, draft);
+        String result;
+        if (localCommandInput == input && matchesSelectedCommand(draft)) {
+            int separator = draft.indexOf(' ');
+            String name = draft.substring(1, separator < 0 ? draft.length() : separator);
+            String options = separator < 0 ? "" : draft.substring(separator + 1);
+            localCommandInput = -1;
+            manager.hooks.each(discordx.api.Hooks.LOCAL_COMMAND, callback -> callback.accept(name, options));
+            result = null;
+        } else {
+            result = ChatSubmission.apply(manager, draft);
+        }
         if (draft.equals(result)) return false;
         String replacement = result == null ? "" : result;
         try {
@@ -260,6 +277,29 @@ final class ChatSurface {
             return true;
         }
         return result == null || !replacement.equals(drafts.get(input));
+    }
+
+    private void rememberCommandSelection(NativeDiscordUi.Node node) {
+        String label = "";
+        for (int depth = 0; node != null && depth < 32; depth++) {
+            if (!node.label.isEmpty() && (node.label.endsWith(". From DiscordX Local")
+                    || node.label.endsWith("DiscordX Local") && owner.containsLabel(node.id, "DiscordX Local", 0)))
+                label = node.label;
+            if (node.tag("suggestions")) {
+                localCommandInput = label.isEmpty() ? -1 : drafts.keySet().iterator().next();
+                localCommandLabel = label;
+                return;
+            }
+            Integer parent = owner.parentId(node.id);
+            node = parent == null ? null : owner.node(parent);
+        }
+    }
+
+    private boolean matchesSelectedCommand(String draft) {
+        if (!draft.startsWith("/")) return false;
+        int end = draft.indexOf(' ');
+        String name = draft.substring(1, end < 0 ? draft.length() : end);
+        return !name.isEmpty() && localCommandLabel.contains(name);
     }
 
     private static android.widget.EditText findField(android.view.View view) {
