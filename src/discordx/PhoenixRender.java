@@ -119,6 +119,32 @@ final class PhoenixRender {
         return result;
     }
 
+    Object buttonColors(Object worklet, long rest, long pressed) throws ReflectiveOperationException {
+        if (!listValues.getDeclaringClass().isInstance(worklet)) return worklet;
+        java.util.List<?> words = (java.util.List<?>) listValues.get(worklet);
+        // Phoenix 356207 stores the background and border press tracks together.
+        // Copy only their color endpoints, preserving the timing and input bindings.
+        for (int i = 0; i + 7 < words.size(); i++) {
+            if (!wordEquals(words.get(i), 8) || !wordEquals(words.get(i+3), 0)
+                    || !wordEquals(words.get(i+4), 10) || !wordEquals(words.get(i+7), 0)) continue;
+            if (!(words.get(i+1) instanceof Number) || !(words.get(i+2) instanceof Number)
+                    || !words.get(i+1).equals(words.get(i+5)) || !words.get(i+2).equals(words.get(i+6))) continue;
+            Object result = array.newInstance();
+            for (int j = 0; j < words.size(); j++) {
+                Object word = words.get(j);
+                if (j == i+1 || j == i+5) word = rest;
+                if (j == i+2 || j == i+6) word = pressed;
+                arrayAdd.invoke(result, word);
+            }
+            return result;
+        }
+        return worklet;
+    }
+
+    private static boolean wordEquals(Object value, int expected) {
+        return value instanceof Number && ((Number)value).longValue() == expected;
+    }
+
     Object plainSpans(Object spans) throws ReflectiveOperationException {
         if (!listValues.getDeclaringClass().isInstance(spans)) return spans;
         StringBuilder text = new StringBuilder();

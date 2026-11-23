@@ -202,7 +202,7 @@ final class NativeDiscordUi {
             || uri.contains("/nameplates/") || node.tag("profile-avatar-decoration") || node.tag("profile-nameplate") || node.tag("profile-effect") || node.tag("profile-banner-image");
     }
 
-    private static final int SURFACE = 1, BANNER = 2, TITLE = 4, ART = 8, DEFAULT_BASE = 16;
+    private static final int SURFACE = 1, BANNER = 2, TITLE = 4, ART = 8, DEFAULT_BASE = 16, BODY_TEXT = 32, SHEET = 64, BUTTON = 128;
 
     private PhoenixRender.Builder profileAppearance(PhoenixRender.Batch source, PhoenixRender.Builder output)
             throws ReflectiveOperationException {
@@ -239,9 +239,12 @@ final class NativeDiscordUi {
             if (!suppress || !hooks.fold(discordx.api.Hooks.PROFILE_APPEARANCE, false,
                     (filter, previous) -> previous || filter.test(user))) continue;
             // Keep Phoenix's original default header, text and controls when no theme was selected.
+            boolean dark = isDark();
+            long base = dark ? 0xff000000L : 0xffffffffL;
             if (paintedBackdrop) {
-                next.put(id, SURFACE);
-                backgrounds.put(id, sheet.background);
+                next.put(sheet.id, SURFACE | SHEET);
+                backgrounds.put(sheet.id, base);
+                profileControls(scroll, next, backgrounds, dark, 0);
             }
             // Phoenix draws its solid banner as the first stack in the scroll content.
             Node content = scroll;
@@ -251,17 +254,17 @@ final class NativeDiscordUi {
                 Node header = nodes.get(content.children[0]);
                 if (paintedBackdrop && header != null && "stack".equals(header.type) && header.height >= 60) {
                     next.put(header.id, BANNER);
-                    backgrounds.put(header.id, sheet.background);
+                    backgrounds.put(header.id, base);
                 }
             }
             for (int part : profileArtwork) {
                 Node n = nodes.get(part);
                 if (n == null || ancestor(part, parent -> parent.id == id) == null) continue;
                 int flags = next.getOrDefault(part, 0);
-                if (decorativeMedia(n)) flags |= ART;
+                if (decorativeMedia(n) || avatarOverlay(n)) flags |= ART;
                 if (custom && n.backgroundGradient != null) {
                     flags |= SURFACE;
-                    backgrounds.put(part, sheet.background);
+                    backgrounds.put(part, base);
                 }
                 if ("text".equals(n.type) && (n.textGradient != null || paintedBackdrop && n.fontSize >= 20)) flags |= TITLE;
 
@@ -284,6 +287,18 @@ final class NativeDiscordUi {
                 output.update(id, "background", backgrounds.getOrDefault(id, n.background));
                 if (n.backgroundGradient != null) output.update(id, "backgroundGradient", flags == 0 ? n.backgroundGradient : null);
             }
+            if ((both & BUTTON) != 0 && n.worklet != null) {
+                Object worklet = n.worklet;
+                if ((flags & BUTTON) != 0) {
+                    long fill = backgrounds.get(id);
+                    worklet = render.buttonColors(worklet, fill, fill == 0xff5865f2L ? 0xff4752c4L : (isDark() ? 0xff34343aL : 0xffdedee3L));
+                }
+                output.update(id, "worklet", worklet);
+            }
+            if ((both & SHEET) != 0 && n.scrimColor != 0)
+                output.update(id, "scrimColor", (flags & SHEET) != 0 ? 0x99000000L : n.scrimColor);
+            if ((both & BODY_TEXT) != 0)
+                output.update(id, "color", (flags & BODY_TEXT) != 0 ? (isDark() ? 0xffededf0L : 0xff242429L) : n.color);
             if ((both & ART) != 0) output.update(id, "opacity", (flags & ART) != 0 ? 0.0 : n.opacity);
             if ((both & TITLE) != 0) {
                 boolean plain = (flags & TITLE) != 0;
@@ -297,6 +312,39 @@ final class NativeDiscordUi {
         profileBackgrounds.clear();
         profileBackgrounds.putAll(backgrounds);
         return output;
+    }
+
+    private boolean avatarOverlay(Node layer) {
+        if (!"image".equals(layer.type) || !layer.absolute || layer.width <= 0 || layer.height != layer.width) return false;
+        Node stack = nodes.get(parents.get(layer.id));
+        if (stack == null || !"stack".equals(stack.type) || layer.width < stack.width || stack.width < 48) return false;
+        for (int child : stack.children) {
+            Node avatar = nodes.get(child);
+            if (avatar != null && avatar != layer && avatar.profileId(false) != null && avatar.width == stack.width) return true;
+        }
+        return false;
+    }
+
+    private void profileControls(Node n, Map<Integer,Integer> styles, Map<Integer,Long> fills, boolean dark, int depth) {
+        if (depth > 32) return;
+        if ("view".equals(n.type) || "stack".equals(n.type)) {
+            if (n.background != 0) {
+                boolean button = n.pressFeedback && n.worklet != null;
+                boolean primary = button && (n.background >>> 24) == 255 && n.flex;
+                long surface = dark ? 0xff222226L : 0xfff2f2f5L;
+                fills.put(n.id, primary ? 0xff5865f2L : surface);
+                styles.put(n.id, button ? SURFACE | BUTTON : SURFACE);
+            }
+        } else if ("text".equals(n.type) && (n.color >>> 24) != 0) {
+            int color = (int)n.color;
+            int r = android.graphics.Color.red(color), g = android.graphics.Color.green(color), b = android.graphics.Color.blue(color);
+            if (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) <= 32)
+                styles.put(n.id, BODY_TEXT);
+        }
+        for (int child : n.children) {
+            Node node = nodes.get(child);
+            if (node != null) profileControls(node, styles, fills, dark, depth + 1);
+        }
     }
 
     private static boolean stockProfileBase(long argb) {
@@ -423,6 +471,11 @@ final class NativeDiscordUi {
                                 break;
                             case "opacity": node.opacity = batch.tags[p] == 5 ? Double.longBitsToDouble(batch.numbers[p]) : dimension(batch, p); break;
                             case "uri": node.uri = string(value); break;
+                            case "scrimColor": node.scrimColor = rgba(batch, p); break;
+                            case "absolute": node.absolute = batch.tags[p] == 2 || value != null; break;
+                            case "worklet": node.worklet = value; break;
+                            case "pressFeedback": node.pressFeedback = batch.tags[p] != 0; break;
+                            case "flex": node.flex = dimension(batch, p) > 0; break;
                             case "background": node.background = rgba(batch, p); break;
                             case "color": node.color = rgba(batch, p); break;
                             case "width": node.width = dimension(batch, p); break;
@@ -435,7 +488,7 @@ final class NativeDiscordUi {
                     }
                     if (node.tag("profile-scroll") || node.tag("profile-main-scroll")) profileScrolls.add(id);
                     else profileScrolls.remove(id);
-                    if (node.backgroundGradient != null || decorativeMedia(node) || node.textGradient != null ||
+                    if (node.backgroundGradient != null || "image".equals(node.type) && node.absolute || decorativeMedia(node) || node.textGradient != null ||
                             "text".equals(node.type) && node.fontSize >= 20) profileArtwork.add(id);
                     else profileArtwork.remove(id);
                     chat.observe(node);
@@ -937,10 +990,11 @@ final class NativeDiscordUi {
         final int id;
         final String type;
         double opacity = 1.0;
-        Object spans, backgroundGradient, textGradient, gradient;
+        Object spans, backgroundGradient, textGradient, gradient, worklet;
         int fontSize;
         String direction = "", access = "", nativeId = "", text = "", uri = "", label = "";
-        long color, background;
+        long color, background, scrimColor;
+        boolean absolute, pressFeedback, flex;
         int width, height, radius;
         int index = -1;
         int[] children = {};

@@ -5,7 +5,7 @@
   "files": {
     "host.patch": "021b5252abce376119b36ad8d8024fa49a8d86202e99ba0f047e285561cc9b7c",
     "bootstrap.dex": "805cef49b29aa12d7b0b506633331604d68fa86b28c0a44165ea2a8751bb518d",
-    "module.dex": "2b66b9e7dc5f7d51b43895f511ed776489ba81d685922244118712b8a003623e",
+    "module.dex": "bc2ac564dfa4891159b402eaf45a6a743563802199c509834844f74937158a5b",
     "plugins/clean_links.zip": "e72e72b966e8f7def1d1ed535bb7500abe9dbbc51a9ebffe7232190c65962a1c",
     "plugins/copy_clean_links.zip": "e6d6f92b6240fbcab2967204e1af05c128083a85e2d936c99f3c4662a83af0ba",
     "plugins/copy_profile_link.zip": "0768c88190913af5b0403a0d737307e85529ef2e1388ee45ba5cda5fd013a6c9",
@@ -18,7 +18,7 @@
     "plugins/index.json": "961670ba80e172d9c1e2fbe422a655730262b94f74c15c77bf5da866d826e840",
     "plugins/message_latency.zip": "b5e825b6744d6c70072724139326a1e910bf46ab61da7c432ddf8a9caa1f3568",
     "plugins/message_logger.zip": "dafc7716bf938107b4891a04fee2d885a9f3cf14cf85429409fd87f4f19535d3",
-    "plugins/no_profile_themes.zip": "ce2b90f8433a4d3fadabde99ed178862a1c2add0742c3f3f9d9dfbe88fd67583",
+    "plugins/no_profile_themes.zip": "6a0d7d0fb1aef70e4500d77825022ce3c793b2caf91670e91fd80917105ae8b5",
     "plugins/plugin_example.zip": "1cfb629e300254ef78757aa073320da2f7f133b21e59c346f3c9c39d3caa1667",
     "plugins/quick_jump.zip": "ab9353040cd6c00d6d5a32493117dd7f30e56c940d489bc39df689462ee42ced",
     "plugins/reduced_motion.zip": "0ccbd97e76e1cbed3b822a7fd1f32d141fc23ee5ccfbcd45c293285e82a981ca",
