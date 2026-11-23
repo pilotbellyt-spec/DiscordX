@@ -96,7 +96,10 @@ final class PluginPages {
                 int row = ui.node("view", "direction", "row", "align", "center", "gap", 12, "width", "fill");
                 int title = ui.node("view", "flex", 1, "direction", "column");
                 ui.batch.children(title, ui.label(label, 14, 500, ui.text));
-                ui.batch.children(row, title, ui.toggle(label, checked, (event, payload) -> page.scope.guard(() -> changed.accept(!checked))));
+                ui.batch.children(row, title, ui.toggle(label, checked, (event, payload) -> {
+                    page.scope.guard(() -> changed.accept(!checked));
+                    if (page.scope.active && page.body == ui) refresh(page);
+                }));
                 return row;
             });
         }
@@ -124,9 +127,13 @@ final class PluginPages {
 
     void refresh(PluginScope scope) {
         for (Page page : new ArrayList<>(pages)) if (page.scope == scope && scope.active) {
-            try { PhoenixRender.Builder batch = owner.builder(); draw(page, batch); owner.submit(batch); }
-            catch (ReflectiveOperationException | RuntimeException error) { scope.fail(error); }
+            refresh(page);
         }
+    }
+
+    private void refresh(Page page) {
+        try { PhoenixRender.Builder batch = owner.builder(); draw(page, batch); owner.submit(batch); }
+        catch (ReflectiveOperationException | RuntimeException error) { page.scope.fail(error); }
     }
 
     void close(PluginScope scope) {
