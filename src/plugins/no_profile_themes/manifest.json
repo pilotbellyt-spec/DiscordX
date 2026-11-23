@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "no_profile_themes",
   "name": "NoProfileThemes",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "author": "DiscordX",
   "description": "Remove profile colors, effects, avatar decorations, and display name styles.",
   "entrypoint": "discordx.plugins.no_profile_themes.Plugin",
@@ -16,7 +16,6 @@
     "gateway_json",
     "ui.settings",
     "ui.preference_toggles",
-    "chat.current_user",
-    "profile_appearance"
+    "chat.current_user"
   ]
 }

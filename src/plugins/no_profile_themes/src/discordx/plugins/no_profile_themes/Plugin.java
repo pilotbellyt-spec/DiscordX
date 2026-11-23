@@ -16,11 +16,6 @@ public final class Plugin implements discordx.api.Plugin {
     @Override public void start(PluginContext context) {
         context.ui().settings("Profile appearance", page ->
             page.preferenceToggle("Keep my own profile appearance", "keepOwn", false));
-        context.register(Hooks.PROFILE_APPEARANCE, owner -> {
-            if (!context.preferences().getBoolean("keepOwn", false)) return true;
-            String self = context.chat().currentUserId();
-            return self != null && owner != null && !owner.isEmpty() && !owner.equals(self);
-        });
         context.register(Hooks.GATEWAY_JSON, (connection, event) -> {
             strip(event.opt("d"), "", exempt(context), false, 0);
             return event;
@@ -32,10 +27,46 @@ public final class Plugin implements discordx.api.Plugin {
             if (owner.isEmpty() && !HISTORY.matcher(url).matches()) return bytes;
             try {
                 Object value = new JSONTokener(new String(bytes, StandardCharsets.UTF_8)).nextValue();
-                return strip(value, owner, exempt(context), !owner.isEmpty(), 0)
+                if (!owner.isEmpty() && value instanceof JSONObject) {
+                    String self = exempt(context);
+                    if (context.preferences().getBoolean("keepOwn", false) && (self == null || owner.equals(self))) return bytes;
+                    return stripProfile((JSONObject)value) ? value.toString().getBytes(StandardCharsets.UTF_8) : bytes;
+                }
+                return strip(value, owner, exempt(context), false, 0)
                     ? value.toString().getBytes(StandardCharsets.UTF_8) : bytes;
             } catch (JSONException malformed) { return bytes; }
         });
+    }
+
+    private static boolean stripProfile(JSONObject profile) throws JSONException {
+        JSONObject global = profile.optJSONObject("user_profile");
+        JSONObject member = profile.optJSONObject("guild_member_profile");
+        boolean changed = clearCosmetics(profile.optJSONObject("user"));
+        changed |= clearCosmetics(global);
+        changed |= clearCosmetics(member);
+        JSONObject membership = profile.optJSONObject("guild_member");
+        changed |= clearCosmetics(membership);
+        if (membership != null) changed |= clearCosmetics(membership.optJSONObject("user"));
+        // The profile response has a presentation tier separate from user and session data.
+        // Omitting it selects the standard sheet without supplying any replacement colors.
+        if (changed && profile.optInt("premium_type", 0) != 0) profile.remove("premium_type");
+        return changed;
+    }
+
+    private static boolean clearCosmetics(JSONObject node) throws JSONException {
+        if (node == null) return false;
+        boolean customBanner = !node.isNull("accent_color") || !node.isNull("banner");
+        boolean changed = false;
+        for (String key : COSMETICS) {
+            if (!node.isNull(key)) { node.put(key, JSONObject.NULL); changed = true; }
+        }
+        for (String key : new String[]{"banner", "banner_color", "banner_color_primary", "banner_color_secondary"}) {
+            if ((customBanner || key.equals("banner")) && !node.isNull(key)) {
+                node.put(key, JSONObject.NULL);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     private static String exempt(PluginContext context) {

@@ -213,19 +213,21 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                 check("be right back short".equals(ChatSubmission.apply(manager, "brb br")), "Text Replace applies longest literal rules without cascading");
                 break;
             case "no_profile_themes":
-                String stock = "{\"user\":{\"username\":\"tester\",\"accent_color\":null,\"banner_color\":\"#778899\"},\"user_profile\":{\"theme_colors\":null}}";
+                String stock = "{\"premium_type\":2,\"user\":{\"username\":\"tester\",\"accent_color\":null,\"banner_color\":\"#778899\"},\"user_profile\":{\"theme_colors\":null}}";
                 check(stock.equals(body(api + "users/123456789012345678/profile", stock)),
                     "NoProfileThemes leaves the stock profile and its derived banner color untouched");
                 String profile = body(api + "users/123456789012345678/profile", "{\"user_profile\":{\"theme_colors\":[1,2],\"bio\":\"test\"}}");
                 org.json.JSONObject data = new org.json.JSONObject(profile).getJSONObject("user_profile");
                 check(data.isNull("theme_colors") && "test".equals(data.getString("bio")), "NoProfileThemes preserves other profile fields");
-                String themed = "{\"user\":{\"id\":\"123456789012345678\",\"username\":\"tester\",\"banner\":\"a_animated\","
+                String themed = "{\"premium_type\":2,\"premium_since\":\"2024-01-01\",\"badges\":[{}],\"user\":{\"id\":\"123456789012345678\",\"username\":\"tester\",\"banner\":\"a_animated\","
                     + "\"avatar\":\"portrait\",\"avatar_decoration_data\":{},\"collectibles\":{\"nameplate\":{}}},"
                     + "\"guild_member_profile\":{\"banner\":\"static\",\"profile_effect\":{},\"theme_colors\":[1,2]}}";
                 org.json.JSONObject neutral = new org.json.JSONObject(body(api + "users/123456789012345678/profile", themed));
                 org.json.JSONObject person = neutral.getJSONObject("user");
-                check(!person.has("banner") && !person.has("collectibles") && !person.has("avatar_decoration_data")
-                    && "portrait".equals(person.getString("avatar")) && neutral.getJSONObject("guild_member_profile").length() == 0,
+                check(person.isNull("banner") && person.isNull("collectibles") && person.isNull("avatar_decoration_data")
+                    && "portrait".equals(person.getString("avatar")) && neutral.getJSONObject("guild_member_profile").isNull("theme_colors")
+                    && !neutral.has("premium_type") && neutral.getJSONArray("badges").length() == 1
+                    && neutral.getString("premium_since").equals("2024-01-01") && !manager.hooks.has(Hooks.PROFILE_APPEARANCE),
                     "NoProfileThemes removes banners, guild colors, nameplates, decorations and effects without removing the avatar");
                 Object profileSocket = new Object();
                 manager.opened(profileSocket, 0, "wss://gateway.discord.gg");
