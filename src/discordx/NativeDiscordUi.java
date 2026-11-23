@@ -202,7 +202,7 @@ final class NativeDiscordUi {
             || uri.contains("/nameplates/") || node.tag("profile-avatar-decoration") || node.tag("profile-nameplate") || node.tag("profile-effect") || node.tag("profile-banner-image");
     }
 
-    private static final int SURFACE = 1, BANNER = 2, TITLE = 4, ART = 8, DEFAULT_BASE = 16, BODY_TEXT = 32, SHEET = 64, BUTTON = 128;
+    private static final int SURFACE = 1, BANNER = 2, TITLE = 4, ART = 8, DEFAULT_BASE = 16, BODY_TEXT = 32, SHEET = 64, BUTTON = 128, TAB = 256, ACTIVE_TAB = 512;
 
     private PhoenixRender.Builder profileAppearance(PhoenixRender.Batch source, PhoenixRender.Builder output)
             throws ReflectiveOperationException {
@@ -299,6 +299,12 @@ final class NativeDiscordUi {
                 output.update(id, "scrimColor", (flags & SHEET) != 0 ? 0x99000000L : n.scrimColor);
             if ((both & BODY_TEXT) != 0)
                 output.update(id, "color", (flags & BODY_TEXT) != 0 ? (isDark() ? 0xffededf0L : 0xff242429L) : n.color);
+            if ((both & TAB) != 0) {
+                boolean themed = (flags & TAB) != 0;
+                boolean active = (flags & ACTIVE_TAB) != 0;
+                long ink = isDark() ? (active ? 0xffffffffL : 0xffb5bac1L) : (active ? 0xff242429L : 0xff535862L);
+                output.update(id, "worklet", themed ? null : n.worklet, "color", themed ? ink : n.color);
+            }
             if ((both & ART) != 0) output.update(id, "opacity", (flags & ART) != 0 ? 0.0 : n.opacity);
             if ((both & TITLE) != 0) {
                 boolean plain = (flags & TITLE) != 0;
@@ -332,9 +338,15 @@ final class NativeDiscordUi {
                 boolean button = n.pressFeedback && n.worklet != null;
                 boolean primary = button && (n.background >>> 24) == 255 && n.flex;
                 long surface = dark ? 0xff222226L : 0xfff2f2f5L;
+                if (n.absolute && n.height == 2 && n.worklet != null && tabStrip(nodes.get(parents.get(n.id)))) {
+                    surface = dark ? 0xffededf0L : 0xff242429L;
+                }
                 fills.put(n.id, primary ? 0xff5865f2L : surface);
                 styles.put(n.id, button ? SURFACE | BUTTON : SURFACE);
             }
+        } else if ("text".equals(n.type) && n.worklet != null && tabButton(n) != null) {
+            Node button = tabButton(n);
+            styles.put(n.id, Boolean.TRUE.equals(button.selected) ? TAB | ACTIVE_TAB : TAB);
         } else if ("text".equals(n.type) && (n.color >>> 24) != 0) {
             int color = (int)n.color;
             int r = android.graphics.Color.red(color), g = android.graphics.Color.green(color), b = android.graphics.Color.blue(color);
@@ -345,6 +357,17 @@ final class NativeDiscordUi {
             Node node = nodes.get(child);
             if (node != null) profileControls(node, styles, fills, dark, depth + 1);
         }
+    }
+
+    private Node tabButton(Node label) {
+        Node parent = nodes.get(parents.get(label.id));
+        Node button = parent == null ? null : nodes.get(parents.get(parent.id));
+        return button != null && button.selected != null && tabStrip(nodes.get(parents.get(button.id))) ? button : null;
+    }
+
+    private boolean tabStrip(Node row) {
+        Node scroller = row == null ? null : nodes.get(parents.get(row.id));
+        return scroller != null && "hscroll".equals(scroller.type) && !scroller.tag("profile-tab-pages");
     }
 
     private static boolean stockProfileBase(long argb) {
@@ -456,6 +479,7 @@ final class NativeDiscordUi {
                         Object value = batch.objects[p];
                         String key = batch.key(p);
                         switch (key) {
+                            case "accessibilitySelected": node.selected = batch.tags[p] == 0 ? null : batch.tags[p] == 2; break;
                             case "accessibilityLabel": node.label = string(value); break;
                             case "accessibilityId": node.access = string(value); break;
                             case "direction": node.direction = string(value); break;
@@ -995,6 +1019,7 @@ final class NativeDiscordUi {
         String direction = "", access = "", nativeId = "", text = "", uri = "", label = "";
         long color, background, scrimColor;
         boolean absolute, pressFeedback, flex;
+        Boolean selected;
         int width, height, radius;
         int index = -1;
         int[] children = {};
