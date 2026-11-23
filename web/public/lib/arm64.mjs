@@ -178,3 +178,31 @@ export function accessEdit(bytes) {
  return {offset, original: bytes.slice(offset, offset+8), patched: new Uint8Array([32,0,128,82,192,3,95,214])};
 }
 
+export function devToolsEdit(bytes) {
+  const elf = new Elf(bytes);
+  if (elf.rtype !== 1027) throw new Error('Expected arm64 ELF');
+  const builders = [];
+  for (const string of elf.findStr(DEVTOOLS_ROW)) {
+    for (const ref of elf.refs(string)) builders.push(elf.func(ref));
+  }
+  const unique = [...new Map(builders.map(range => [range.join(':'), range])).values()];
+  if (unique.length !== 1) throw new Error(`DevTools builder: expected 1 match, got ${unique.length}`);
+  const [start] = unique[0];
+  const firstRef = Math.min(...elf.findStr(DEVTOOLS_ROW).flatMap(string => elf.refs(string)));
+  const gates = [];
+  for (let pc = start; pc + 4 < firstRef; pc += 4) {
+    const target = blTarget(elf.u32(pc), pc);
+    const branch = elf.u32(pc + 4);
+    if (target !== null && ((branch & 0xff00001f) === 0x34000000 || (branch & 0xfff8001f) === 0x36000000)) {
+      gates.push(pc + 4);
+    }
+  }
+  const gate = one(gates, 'DevTools visibility gate');
+  const offset = elf.off(gate);
+  return {
+    offset,
+    original: bytes.slice(offset, offset + 4),
+    patched: new Uint8Array([0x1f, 0x20, 0x03, 0xd5]),
+  };
+}
+

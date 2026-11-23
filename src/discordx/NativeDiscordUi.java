@@ -3,7 +3,9 @@ package discordx;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.res.Configuration;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -100,7 +102,7 @@ final class NativeDiscordUi {
                 final int nav = navigator.id;
                 final int page = root;
                 output = place(output, account, list, account.id, ui ->
-                    settingsEntry(ui, batch, account, (event, payload) -> settingsPage.open(nav, page)), false);
+                    settingsEntries(ui, batch, account, (event, payload) -> settingsPage.open(nav, page)), false);
             }
             java.util.ArrayList<PluginUiBridge.ProfileAction> actions = new java.util.ArrayList<>();
             for (PluginUiBridge.ProfileAction action : DiscordX.manager.profiles) if (action.scope.active) actions.add(action);
@@ -592,16 +594,26 @@ final class NativeDiscordUi {
         return "";
     }
 
-    private int settingsEntry(NativeControls ui, PhoenixRender.Batch batch, Node account, NativeControls.Action open)
+    private int settingsEntries(NativeControls ui, PhoenixRender.Batch batch, Node account, NativeControls.Action plugins)
             throws ReflectiveOperationException {
         Set<Integer> created = new HashSet<>();
         for (int row = 0; row < batch.count; row++) if (batch.kind(row) == PhoenixRender.CREATE) created.add(batch.id(row));
         Node title = firstOfType(account, "text", 0);
         Node icon = firstOfType(account, "image", 0);
-        if (title == null || !isStyleTemplate(account, created, 0)) return ui.settingsRow(rightmostIcon(account, 0), open);
-        int entry = mirrorSettings(ui, batch, account, account.id, title.id, icon == null ? -1 : icon.id);
-        ui.actions.put(entry, open);
-        return entry;
+        if (title == null || !isStyleTemplate(account, created, 0)) return ui.settingsRow(rightmostIcon(account, 0), plugins);
+        int pluginRow = mirrorSettings(ui, batch, account, account.id, title.id, icon == null ? -1 : icon.id,
+            "DiscordX Plugins", "settings.row.discordx", "res://ic_mana_puzzle_piece_plus");
+        int devTools = mirrorSettings(ui, batch, account, account.id, title.id, icon == null ? -1 : icon.id,
+            "DevTools", "settings.row.discordx.devtools", "res://ic_mana_settings_circle");
+        int experiments = mirrorSettings(ui, batch, account, account.id, title.id, icon == null ? -1 : icon.id,
+            "Experiment Overrides", "settings.row.discordx.experiments", "res://ic_mana_experimental_snowflake");
+        ui.actions.put(pluginRow, plugins);
+        NativeControls.Action developer = (event, payload) -> openPhoenixDeveloperSettings();
+        ui.actions.put(devTools, developer);
+        ui.actions.put(experiments, developer);
+        int group = ui.node("view", "width", "fill", "direction", "column");
+        ui.batch.children(group, pluginRow, devTools, experiments);
+        return group;
     }
 
     private boolean isStyleTemplate(Node node, Set<Integer> created, int depth) {
@@ -623,22 +635,33 @@ final class NativeDiscordUi {
         return null;
     }
 
-    private int mirrorSettings(NativeControls ui, PhoenixRender.Batch batch, Node source, int root, int title, int icon)
+    private int mirrorSettings(NativeControls ui, PhoenixRender.Batch batch, Node source, int root, int title, int icon,
+            String label, String accessibilityId, String iconUri)
             throws ReflectiveOperationException {
         int id = nextId();
         ui.nodes.add(id);
         if (source.id == root) ui.batch.mirror(batch, source.id, id, source.type,
-            "on", NativeControls.PRESS, "role", "button", "accessibilityId", "settings.row.discordx",
-            "accessibilityLabel", "DiscordX Plugins");
-        else if (source.id == title) ui.batch.mirror(batch, source.id, id, source.type, "text", "DiscordX Plugins");
-        else if (source.id == icon) ui.batch.mirror(batch, source.id, id, source.type, "uri", "res://ic_mana_puzzle_piece_plus");
+            "on", NativeControls.PRESS, "role", "button", "accessibilityId", accessibilityId,
+            "accessibilityLabel", label);
+        else if (source.id == title) ui.batch.mirror(batch, source.id, id, source.type, "text", label);
+        else if (source.id == icon) ui.batch.mirror(batch, source.id, id, source.type, "uri", iconUri);
         else ui.batch.mirror(batch, source.id, id, source.type);
         int[] children = new int[source.children.length];
         for (int i = 0; i < children.length; i++) {
-            children[i] = mirrorSettings(ui, batch, nodes.get(source.children[i]), root, title, icon);
+            children[i] = mirrorSettings(ui, batch, nodes.get(source.children[i]), root, title, icon,
+                label, accessibilityId, iconUri);
         }
         if (children.length > 0) ui.batch.children(id, children);
         return id;
+    }
+
+    private void openPhoenixDeveloperSettings() {
+        try {
+            activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("discord://app/settings/devtools"))
+                .setPackage(activity.getPackageName()));
+        } catch (RuntimeException error) {
+            failure("Could not open Phoenix DevTools", error);
+        }
     }
 
     private Node find(int root, String tag, int depth) {

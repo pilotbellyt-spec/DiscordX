@@ -5,7 +5,7 @@
   "files": {
     "host.patch": "021b5252abce376119b36ad8d8024fa49a8d86202e99ba0f047e285561cc9b7c",
     "bootstrap.dex": "805cef49b29aa12d7b0b506633331604d68fa86b28c0a44165ea2a8751bb518d",
-    "module.dex": "436c311fe16b1a41fabec90e631cd4df7a5acb997d0476c97c2f83fadcc50f6c",
+    "module.dex": "e42d685faa87de77f410083aedbf51cc6e0a028becb2dff8e6eb9c7978a5ebc8",
     "plugins/clean_links.zip": "e72e72b966e8f7def1d1ed535bb7500abe9dbbc51a9ebffe7232190c65962a1c",
     "plugins/copy_clean_links.zip": "e6d6f92b6240fbcab2967204e1af05c128083a85e2d936c99f3c4662a83af0ba",
     "plugins/copy_profile_link.zip": "0768c88190913af5b0403a0d737307e85529ef2e1388ee45ba5cda5fd013a6c9",

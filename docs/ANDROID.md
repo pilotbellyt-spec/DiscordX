@@ -4,6 +4,8 @@ DiscordX supports Discord Phoenix build **356207**, **hdpi**, and either **arm64
 
 Open Phoenix **Settings → DiscordX Plugins**. **Ctrl+Shift+X** also opens the manager from supported Settings screens. Search installed plugins, view their details, and enable or disable them. The bundled plugins start disabled on a fresh installation.
 
+Phoenix **DevTools** and **Experiment Overrides** also appear in Settings. They open Phoenix's native developer screen; DiscordX only bypasses that screen's local visibility check and does not grant Discord staff or server permissions.
+
 ## Manage packages
 
 Select **Import plugin ZIP** to choose a compiled package from Android's document picker. **Import from URL** downloads a direct HTTPS ZIP URL. Redirects are not followed. Imported packages remain disabled until you enable them. Details show the version, author, hash, status, errors, and registered settings.

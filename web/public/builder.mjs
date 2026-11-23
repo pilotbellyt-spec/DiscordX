@@ -2,7 +2,7 @@ import {readZip, entryData, storedEntry, deflatedEntry, writeZip} from './lib/zi
 import {signV2, decodeIdentity} from './lib/sign.mjs';
 import {inspectManifest, patchManifest} from './lib/axml.mjs';
 import {mergeArsc} from './lib/arsc.mjs';
-import {accessEdit} from './lib/arm64.mjs';
+import {accessEdit, devToolsEdit} from './lib/arm64.mjs';
 import {applyDexPatch} from './lib/dex-patch.mjs';
 
 export const sha256 = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b=>b.toString(16).padStart(2,'0')).join('');
@@ -25,29 +25,37 @@ export async function build({base, abi, density, architecture, payload, identity
   for (const [file, hash] of Object.entries(payload.manifest.files)) if (await sha256(payload[file]) !== hash) throw new Error(`Payload integrity check failed: ${file}`);
   log('Validated Discord build and DiscordX payloads.');
   const engine = (await WebAssembly.instantiate(wasm)).instance.exports;
-  const allocate = size => {
-    const pages = Math.ceil(size / 65536);
-    if (engine.memory.buffer.byteLength < size) engine.memory.grow(pages - engine.memory.buffer.byteLength / 65536);
-    return new Uint8Array(engine.memory.buffer);
-  };
   const hostPath = `lib/${architecture}/liblibdiscord_wasm_host.so`;
   const native = await extract(abiEntries, hostPath);
   const machine = new DataView(native.buffer,native.byteOffset,native.byteLength).getUint16(18,true);
   if (machine !== (architecture==='x86_64' ? 62 : 183)) throw new Error('The selected CPU does not match the native APK.');
-  let edit;
-  if (architecture === 'arm64-v8a') edit = accessEdit(native);
+  let edits;
+  if (architecture === 'arm64-v8a') edits = [accessEdit(native), devToolsEdit(native)];
   else {
     const offset = 0x2eac1c4;
     const expected = new Uint8Array([0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x28,0xb3,2]);
     if (expected.some((b,i)=>native[offset+i]!==b)) throw new Error('Unexpected x86_64 access evaluator.');
-    edit = {offset,original:expected.slice(0,3),patched:new Uint8Array([0xb0,1,0xc3])};
+    const gate = 0x3d8ec55;
+    const gateExpected = new Uint8Array([0x0f,0x84,0xac,0x02,0x00,0x00]);
+    if (gateExpected.some((b,i)=>native[gate+i]!==b)) throw new Error('Unexpected x86_64 DevTools visibility gate.');
+    edits = [
+      {offset,original:expected.slice(0,3),patched:new Uint8Array([0xb0,1,0xc3])},
+      {offset:gate,original:gateExpected,patched:new Uint8Array(6).fill(0x90)},
+    ];
   }
-  const size = native.length, count = edit.original.length;
-  const memory = allocate(size + count*2);
-  memory.set(native); memory.set(edit.original,size); memory.set(edit.patched,size+count);
-  if (!engine.patch(edit.offset,size,size+count,count)) throw new Error('WASM native byte guard failed.');
-  const patchedNative = memory.slice(0,size);
-  log(`WASM patched ${architecture} Phoenix access gate at 0x${edit.offset.toString(16)}.`);
+  const size = native.length, scratch = Math.max(...edits.map(edit => edit.original.length));
+  const pages = Math.ceil((size + scratch * 2) / 65536);
+  if (engine.memory.buffer.byteLength < size + scratch * 2) engine.memory.grow(pages - engine.memory.buffer.byteLength / 65536);
+  const memory = new Uint8Array(engine.memory.buffer);
+  memory.set(native);
+  for (const edit of edits) {
+    const count = edit.original.length;
+    memory.set(edit.original, size);
+    memory.set(edit.patched, size + count);
+    if (!engine.patch(edit.offset, size, size + count, count)) throw new Error('WASM native byte guard failed.');
+  }
+  const patchedNative = memory.slice(0, size);
+  log(`WASM patched ${architecture} Phoenix access and native developer screens.`);
   const patchedDex = await applyDexPatch(originalDex, payload['host.patch']);
   if (await sha256(patchedDex) !== payload.manifest.hostDexSha256) throw new Error('Patched host DEX integrity check failed.');
   log('Applied DiscordX hooks to the original DEX.');

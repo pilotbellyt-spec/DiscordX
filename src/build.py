@@ -22,6 +22,8 @@ PHOENIX_HOST = "lib/x86_64/liblibdiscord_wasm_host.so"
 PHOENIX_ACCESS_ANCHOR = b"2026-11-phoenix-app-access"
 PHOENIX_ACCESS_OFFSET = 0x2EAC1C4
 PHOENIX_ACCESS_PROLOGUE = bytes.fromhex("554157415641554154534883ec28b302")
+PHOENIX_DEVTOOLS_GATE_OFFSET = 0x3D8EC55
+PHOENIX_DEVTOOLS_GATE = bytes.fromhex("0f84ac020000")
 
 
 def run(*command, capture=False, env=None):
@@ -277,7 +279,7 @@ def patch_motion(smali):
 
 
 def patch_phoenix_access(host):
-    """Force the build-356207 x86_64 Phoenix access evaluator to Some(true)."""
+    """Expose Phoenix and its native developer screens on build-356207 x86_64."""
     if host[:4] != b"\x7fELF" or host[4] != 2 or struct.unpack_from("<H", host, 18)[0] != 62:
         raise ValueError("Expected the x86_64 Phoenix host ELF")
     if host.count(PHOENIX_ACCESS_ANCHOR) != 2:
@@ -289,6 +291,10 @@ def patch_phoenix_access(host):
         )
     patched = bytearray(host)
     patched[PHOENIX_ACCESS_OFFSET:PHOENIX_ACCESS_OFFSET + 3] = bytes.fromhex("b001c3")
+    gate = patched[PHOENIX_DEVTOOLS_GATE_OFFSET:PHOENIX_DEVTOOLS_GATE_OFFSET + len(PHOENIX_DEVTOOLS_GATE)]
+    if gate != PHOENIX_DEVTOOLS_GATE:
+        raise ValueError(f"Unexpected Phoenix DevTools gate at {PHOENIX_DEVTOOLS_GATE_OFFSET:#x}: {gate.hex()}")
+    patched[PHOENIX_DEVTOOLS_GATE_OFFSET:PHOENIX_DEVTOOLS_GATE_OFFSET + len(PHOENIX_DEVTOOLS_GATE)] = b"\x90" * len(PHOENIX_DEVTOOLS_GATE)
     return bytes(patched)
 
 
