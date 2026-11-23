@@ -21,6 +21,12 @@ public final class Hooks {
     public static final Hook<java.util.function.Function<String, String>> BEFORE_SEND = new Hook<>("before_send");
     /** Submission from the native picker for a command contributed by DiscordX Local. */
     public static final Hook<java.util.function.BiConsumer<String, String>> LOCAL_COMMAND = new Hook<>("local_command");
+    public static final Hook<java.util.function.BiFunction<String,String,String>> MENTION_AVATAR = new Hook<>("mention_avatar");
+    public static final Hook<EmojiLink> PICKER_EMOJIS = new Hook<>("picker_emojis");
+    public static final Hook<java.util.function.Predicate<String>> PROFILE_APPEARANCE = new Hook<>("profile_appearance");
+    /** Two RGB stops for a profile that Phoenix reports has no selected colors. */
+    public static final Hook<java.util.function.Supplier<int[]>> DEFAULT_PROFILE_COLORS = new Hook<>("default_profile_colors");
+    public interface EmojiLink { String link(String id, String name, String imageUri); }
     public static final Hook<Gateway> GATEWAY = new Hook<>("gateway");
     public static final Hook<HttpResponse> HTTP_RESPONSE = new Hook<>("http_response");
     public static final Hook<java.util.function.Function<Request, Reply>> HTTP_REQUEST = new Hook<>("http_request");

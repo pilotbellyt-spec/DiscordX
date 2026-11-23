@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "text_replace",
+  "name": "Text Replace",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Replace saved phrases before sending a message.",
+  "entrypoint": "discordx.plugins.text_replace.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "before_send",
+    "ui.settings"
+  ]
+}

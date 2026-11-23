@@ -150,3 +150,10 @@ For Java development, run `python src/build_plugins.py <plugin-directory> --watc
 Build the verification app with `python src/verify_plugins.py`. Run it on an Android test device with `--adb <serial>`. Also exercise the plugin's actual Phoenix screen and external services. Compilation and package validation do not prove UI integration.
 
 Plugins execute inside Discord's process with the app's data and permissions. Class-loader isolation is a dependency boundary, not a security sandbox. Enable only code you trust.
+
+
+### Preferences and host operations
+
+Declare `ui.preference_toggles` to use `page.preferenceToggle(label, key, fallback)`. The switch observes the plugin's private boolean preference while the page is open. Changes from another control refresh the page.
+
+`host().bridgeOperation("guest.enqueue:…")` returns the index from the running Phoenix symbol table, or -1 when absent. An entry in `requires` can use the form `bridge.guest.enqueue:…` to require a particular operation. Plugin details show decoded gateway deletions, deletions delivered to the plugin, and message redraw requests.

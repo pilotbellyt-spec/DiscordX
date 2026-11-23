@@ -279,6 +279,26 @@ final class ChatSurface {
         return result == null || !replacement.equals(drafts.get(input));
     }
 
+    boolean insertEmoji(String token) throws ReflectiveOperationException {
+        if (drafts.size() != 1) return false;
+        int input = drafts.keySet().iterator().next();
+        android.view.View view = owner.nativeView(input);
+        android.widget.EditText field = findField(view);
+        if (field == null) return false;
+        int a = field.getSelectionStart(), b = field.getSelectionEnd();
+        if (a < 0 || b < 0) a = b = field.length();
+        int start = Math.min(a, b), end = Math.max(a, b);
+        CharSequence original = field.getText();
+        String left = start > 0 && !Character.isWhitespace(original.charAt(start - 1)) ? " " : "";
+        String right = end < original.length() && !Character.isWhitespace(original.charAt(end)) ? " " : "";
+        String insertion = left + token + right;
+        field.getText().replace(start, end, insertion);
+        field.setSelection(Math.min(field.length(), start + insertion.length()));
+        String draft = field.getText().toString();
+        if (!draft.equals(drafts.get(input))) owner.changeDraft(view, draft);
+        return true;
+    }
+
     private void rememberCommandSelection(NativeDiscordUi.Node node) {
         String label = "";
         for (int depth = 0; node != null && depth < 32; depth++) {

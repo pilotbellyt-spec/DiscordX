@@ -14,6 +14,8 @@ public final class Plugin implements discordx.api.Plugin {
         "(?s)(`+).*?\\1|(?<!\\\\)<(a?):([A-Za-z0-9_]{2,32}):([1-9][0-9]{16,19})>|(?<![A-Za-z0-9_\\\\]):([A-Za-z0-9_]{2,32}):(?![A-Za-z0-9_])");
 
     private final Map<String, Map<String, String>> guilds = new HashMap<>();
+    private volatile Map<String,String> filesById = java.util.Collections.emptyMap();
+    private int generation;
     private volatile Map<String, String> names = java.util.Collections.emptyMap();
 
     private static Map<String, String> emojiNames(JSONArray emojis) {
@@ -22,7 +24,7 @@ public final class Plugin implements discordx.api.Plugin {
         for (int i = 0; i < emojis.length(); i++) {
             JSONObject emoji = emojis.optJSONObject(i);
             if (emoji == null || !emoji.optString("id").matches("[1-9][0-9]{16,19}")) continue;
-            result.put(emoji.optString("name"), emoji.optString("id") + (emoji.optBoolean("animated") ? ".gif" : ".png"));
+            result.put(emoji.optString("id") + (emoji.optBoolean("animated") ? ".gif" : ".png"), emoji.optString("name"));
         }
         return result;
     }
@@ -32,38 +34,44 @@ public final class Plugin implements discordx.api.Plugin {
         HashSet<String> ambiguous = new HashSet<>();
         for (Map<String, String> guild : guilds.values()) {
             for (Map.Entry<String, String> entry : guild.entrySet()) {
-                String previous = result.put(entry.getKey(), entry.getValue());
-                if (previous != null && !previous.equals(entry.getValue())) ambiguous.add(entry.getKey());
+                String previous = result.put(entry.getValue(), entry.getKey());
+                if (previous != null && !previous.equals(entry.getKey())) ambiguous.add(entry.getValue());
             }
         }
         result.keySet().removeAll(ambiguous);
         names = result;
+        Map<String,String> files = new HashMap<>();
+        for (Map<String,String> guild : guilds.values())
+            for (String file : guild.keySet()) files.put(file.substring(0, file.indexOf('.')), file);
+        filesById = files;
     }
 
     @Override public void start(PluginContext context) {
-        context.runAsync(() -> context.chat().queryCache("SELECT k, json_extract(CAST(v AS TEXT), '$.emojis') AS emojis FROM guilds"),
-            rows -> {
-                synchronized (this) {
-                    for (int i = 0; i < rows.length(); i++) {
-                        JSONObject row = rows.optJSONObject(i);
-                        if (row == null) continue;
-                        try {
-                            guilds.putIfAbsent(row.optString("k").replaceFirst("^0+", ""), emojiNames(new JSONArray(row.getString("emojis"))));
-                        } catch (org.json.JSONException ignored) {}
-                    }
-                    rebuild();
-                }
-            }, error -> {});
+        loadCache(context);
+        context.register(discordx.api.Hooks.PICKER_EMOJIS, (id, name, uri) -> {
+            String file = filesById.get(id);
+            if (file == null) file = id + (uri.contains("/" + id + ".gif") ? ".gif" : ".webp");
+            return link(context, name.matches("[A-Za-z0-9_]{2,32}") ? name : "emoji", file);
+        });
         context.register(discordx.api.Hooks.GATEWAY_JSON, (connection, event) -> {
             String type = event.optString("t");
             JSONObject data = event.optJSONObject("d");
-            if (data == null || !("GUILD_CREATE".equals(type) || "GUILD_EMOJIS_UPDATE".equals(type) || "GUILD_DELETE".equals(type))) return event;
-            String guild = data.optString("guild_id", data.optString("id"));
-            if (guild.isEmpty()) return event;
+            if (data == null) return event;
             synchronized (this) {
-                if ("GUILD_DELETE".equals(type)) guilds.put(guild, java.util.Collections.emptyMap());
-                else if (data.has("emojis")) guilds.put(guild, emojiNames(data.optJSONArray("emojis")));
-                rebuild();
+                if ("READY".equals(type)) {
+                    generation++;
+                    guilds.clear();
+                    JSONArray joined = data.optJSONArray("guilds");
+                    if (joined != null) for (int i = 0; i < joined.length(); i++) remember(joined.optJSONObject(i));
+                    rebuild();
+                    context.runOnMain(() -> loadCache(context));
+                } else if ("GUILD_CREATE".equals(type) || "GUILD_UPDATE".equals(type) || "GUILD_EMOJIS_UPDATE".equals(type)) {
+                    remember(data);
+                    rebuild();
+                } else if ("GUILD_DELETE".equals(type) && !data.optBoolean("unavailable")) {
+                    guilds.put(data.optString("id"), java.util.Collections.emptyMap());
+                    rebuild();
+                }
             }
             return event;
         });
@@ -73,24 +81,76 @@ public final class Plugin implements discordx.api.Plugin {
                 context.preferences().edit().putInt("size", size >= 512 ? 64 : size * 2).apply();
                 context.ui().refresh();
             });
-            page.toggle("Use emoji name as link text", context.preferences().getBoolean("named", false),
-                value -> context.preferences().edit().putBoolean("named", value).apply());
+            page.preferenceToggle("Use emoji name as link text", "named", false);
         });
         context.chat().beforeSend(draft -> {
             if (draft == null || draft.indexOf(':') < 0) return draft;
             Matcher token = TOKEN.matcher(draft);
             StringBuffer result = new StringBuffer();
             while (token.find()) {
-                if (token.group(1) != null) continue;
+                if (token.group(1) != null || (token.start() > 0 && draft.charAt(token.start() - 1) == '['
+                        && draft.startsWith("](https://cdn.discordapp.com/emojis/", token.end()))) continue;
                 String name = token.group(4) == null ? token.group(5) : token.group(3);
                 String file = token.group(4) == null ? names.get(name)
                     : token.group(4) + (token.group(2).isEmpty() ? ".png" : ".gif");
                 if (file == null) continue;
-                String url = "https://cdn.discordapp.com/emojis/" + file + "?size=" + context.preferences().getInt("size", 128);
-                String link = context.preferences().getBoolean("named", false) ? "[:" + name + ":](" + url + ")" : url;
-                token.appendReplacement(result, Matcher.quoteReplacement(link));
+                token.appendReplacement(result, Matcher.quoteReplacement(link(context, name, file)));
             }
             return token.appendTail(result).toString();
         });
+    }
+
+    private static String link(PluginContext context, String name, String file) {
+        String url = "https://cdn.discordapp.com/emojis/" + file + "?size=" + context.preferences().getInt("size", 128);
+        return context.preferences().getBoolean("named", false) ? "[:" + name + ":](" + url + ")" : url;
+    }
+
+    private void remember(JSONObject data) {
+        if (data == null) return;
+        String id = data.optString("guild_id", data.optString("id"));
+        if (id.isEmpty()) return;
+        if (data.optJSONArray("emojis") != null) guilds.put(id, emojiNames(data.optJSONArray("emojis")));
+    }
+
+    private synchronized void loadCache(PluginContext context) {
+        final int version = generation;
+        context.runAsync(() -> {
+            Map<String,JSONObject> records = new HashMap<>();
+            String key = "";
+            int index = -1;
+            for (;;) {
+                JSONArray rows = context.chat().queryCache("SELECT g.k AS guild, e.key AS idx, "
+                    + "coalesce(json_extract(CAST(g.v AS TEXT),'$.name'),json_extract(CAST(g.v AS TEXT),'$.properties.name')) AS name, "
+                    + "json_extract(e.value,'$.id') AS id, json_extract(e.value,'$.name') AS emoji, "
+                    + "json_extract(e.value,'$.animated') AS animated FROM guilds g, "
+                    + "json_each(CAST(g.v AS TEXT),'$.emojis') e WHERE g.k >= ? AND "
+                    + "(g.k > ? OR e.key > CAST(? AS INTEGER)) ORDER BY g.k,e.key LIMIT 400",
+                    key, key, Integer.toString(index));
+                if (rows.length() == 0) break;
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject row = rows.getJSONObject(i);
+                    key = row.getString("guild");
+                    index = row.getInt("idx");
+                    String guild = key.replaceFirst("^0+", "");
+                    JSONObject record = records.get(guild);
+                    if (record == null) {
+                        record = new JSONObject().put("name", row.opt("name")).put("emojis", new JSONArray());
+                        records.put(guild, record);
+                    }
+                    record.getJSONArray("emojis").put(new JSONObject().put("id", row.optString("id"))
+                        .put("name", row.optString("emoji")).put("animated", row.optInt("animated") == 1));
+                }
+            }
+            return records;
+        }, records -> {
+            synchronized (this) {
+                if (version != generation) return;
+                for (Map.Entry<String,JSONObject> entry : records.entrySet()) {
+                    JSONObject row = entry.getValue();
+                    guilds.putIfAbsent(entry.getKey(), emojiNames(row.optJSONArray("emojis")));
+                }
+                rebuild();
+            }
+        }, error -> android.util.Log.w("DiscordX", "Could not read the server emoji cache", error));
     }
 }

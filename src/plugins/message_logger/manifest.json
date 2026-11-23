@@ -19,6 +19,7 @@
     "display_text",
     "composer_text",
     "clipboard",
-    "chat.accessories"
+    "chat.accessories",
+    "ui.preference_toggles"
   ]
 }

@@ -77,8 +77,10 @@ final class ChatBridge implements Chat {
     @Override public void redraw(String id) {
         main();
         if (!Ids.snowflake(id)) throw new IllegalArgumentException("Invalid message ID");
+        scope.redrawRequests.incrementAndGet();
         if (scope.manager.ui != null) scope.manager.ui.redrawChat(id);
     }
+    @Override public String currentUserId() { scope.requireActive(); return scope.manager.cache.account; }
     @Override public JSONObject cachedMessage(String channel, String message) { scope.requireActive(); return scope.manager.cache.message(channel, message); }
     @Override public org.json.JSONArray queryCache(String sql, String... arguments) {
         scope.requireActive();

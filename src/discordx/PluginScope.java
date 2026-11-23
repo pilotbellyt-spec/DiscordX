@@ -20,6 +20,8 @@ import java.util.function.Consumer;
 final class PluginScope implements PluginContext {
     final PluginManager manager;
     final PluginManager.Entry entry;
+    final java.util.concurrent.atomic.AtomicInteger receivedDeletes = new java.util.concurrent.atomic.AtomicInteger();
+    final java.util.concurrent.atomic.AtomicInteger redrawRequests = new java.util.concurrent.atomic.AtomicInteger();
     volatile boolean active = true;
     private final ArrayList<Registration> registrations = new ArrayList<>();
     private final PluginUi ui;

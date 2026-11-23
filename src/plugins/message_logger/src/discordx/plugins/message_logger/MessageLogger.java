@@ -73,6 +73,10 @@ public final class MessageLogger {
     }
 
     public static synchronized byte[] onFrame(Object owner, int socket, byte[] bytes) {
+        return onFrame(owner, socket, bytes, true, true);
+    }
+
+    static synchronized byte[] onFrame(Object owner, int socket, byte[] bytes, boolean edits, boolean deletes) {
         if (bytes == null || bytes.length == 0 || bytes.length > 2 * 1024 * 1024) return bytes;
         if (!enabled) return bytes;
         Set<Integer> registered = sockets.get(owner);
@@ -99,17 +103,18 @@ public final class MessageLogger {
                     remember(data, channel);
                     break;
                 case "MESSAGE_UPDATE":
-                    token = update(data, channel);
+                    token = update(data, channel, edits);
                     if (token != null) return withMarker(payload, data, data.getString("content"), token);
                     break;
                 case "MESSAGE_DELETE":
+                    if (!deletes) { forget(data.optString("id")); break; }
                     byte[] retained = retainDeletion(payload, data.optString("id"), channel);
                     if (retained != null) return retained;
                     break;
                 case "MESSAGE_DELETE_BULK":
                     JSONArray ids = data.optJSONArray("ids");
                     if (ids != null) {
-                        if (ids.length() == 1) {
+                        if (deletes && ids.length() == 1) {
                             retained = retainDeletion(payload, ids.optString(0), channel);
                             if (retained != null) return retained;
                         }
@@ -166,7 +171,7 @@ public final class MessageLogger {
         if (message != null && message.channel.equals(channel)) message.localDelete = true;
     }
 
-    private static String update(JSONObject data, String channel) throws JSONException {
+    private static String update(JSONObject data, String channel, boolean edits) throws JSONException {
         String id = data.optString("id");
         String after = content(data);
         Message before = messages.get(id);
@@ -188,6 +193,7 @@ public final class MessageLogger {
         trim();
         if (messages.get(id) != before || after == null) return null;
         if (after.equals(before.text)) return before.token;
+        if (!edits) { before.text = after; return null; }
         before.versions.addFirst(before.text);
         if (before.versions.size() > 4) before.versions.removeLast();
         before.text = after;

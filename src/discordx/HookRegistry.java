@@ -27,12 +27,18 @@ final class HookRegistry {
     }
 
     <T, R> R fold(Hook<T> hook, R value, BiFunction<T, R, R> invoke) {
+        return foldOwned(hook, value, (scope, callback, current) -> invoke.apply(callback, current));
+    }
+
+    interface ScopedFold<T,R> { R apply(PluginScope scope, T callback, R current); }
+
+    <T,R> R foldOwned(Hook<T> hook, R value, ScopedFold<T,R> invoke) {
         CopyOnWriteArrayList<Binding<?>> list = bindings.get(hook);
         if (list == null) return value;
         for (Binding<?> raw : list) {
             if (!raw.scope.active) continue;
             @SuppressWarnings("unchecked") Binding<T> binding = (Binding<T>) raw;
-            try { value = invoke.apply(binding.callback, value); }
+            try { value = invoke.apply(binding.scope, binding.callback, value); }
             catch (Throwable error) { binding.scope.fail(error); }
         }
         return value;

@@ -15,6 +15,11 @@ final class NativeSettings {
 
     NativeSettings(NativeDiscordUi owner) { this.owner = owner; }
 
+    void openDetails(String id) throws ReflectiveOperationException {
+        openModal();
+        show(id, "");
+    }
+
     void openModal() throws ReflectiveOperationException {
         if (page != null) return;
         PhoenixRender.Builder batch = owner.builder();
@@ -154,6 +159,13 @@ final class NativeSettings {
                             if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SHA-256", entry.pack.hash));
                         })));
                 rows.add(metadata);
+                if (entry.scope != null && entry.scope.active) {
+                    rows.add(ui.label("Session diagnostics", 14, 600, ui.muted));
+                    rows.add(metadata(ui, "Decoded deletes", Integer.toString(manager.observedDeletes.get())));
+                    rows.add(metadata(ui, "Plugin deletes", Integer.toString(entry.scope.receivedDeletes.get())));
+                    rows.add(metadata(ui, "Redraw requests", Integer.toString(entry.scope.redrawRequests.get())));
+                    rows.add(ui.link("Refresh counts", (event, payload) -> show(section, "")));
+                }
                 ArrayList<Integer> actions = new ArrayList<>();
                 actions.add(ui.button("Reload", false, (event, payload) -> manager.reload(entry)));
                 if (manager.hasDocument(entry)) actions.add(ui.button("Reload ZIP", false, (event, payload) -> manager.reloadDocument(entry)));
@@ -163,7 +175,7 @@ final class NativeSettings {
                 rows.add(horizontal(ui, 8, PhoenixRender.integers(actions)));
             } else rows.add(ui.label("Plugin removed", 14, 400, ui.muted));
         } else {
-            int search = ui.input("Search plugins", query, false, (event, payload) -> {
+            int search = ui.input("Search plugins and settings", query, false, (event, payload) -> {
                 String value = owner.inputText(payload); if (value != null) query = value;
             });
             rows.add(horizontal(ui, 8, stretch(ui, search), ui.button("Search", false, (event, payload) -> show("", ""))));
@@ -182,16 +194,22 @@ final class NativeSettings {
             int columns = width >= 700 ? 2 : 1;
             int cardWidth = (width - (columns - 1) * 12) / columns;
             String term = query.trim().toLowerCase(Locale.ROOT);
+            boolean matches = false;
+            if (!term.isEmpty()) for (PluginUiBridge.Setting setting : manager.settings) {
+                if (setting.scope.active && setting.title.toLowerCase(Locale.ROOT).contains(term)) {
+                    matches = true;
+                    rows.add(ui.row(setting.title, setting.scope.info().name, "", ui.card,
+                        (event, payload) -> setting.scope.guard(() -> setting.scope.ui().open(setting.title, setting.page))));
+                }
+            }
             for (PluginManager.Entry entry : manager.entries.values()) {
                 if (enabledOnly && entry.status != PluginManager.Status.RUNNING) continue;
                 if (!(entry.pack.name + " " + entry.pack.description + " " + entry.pack.author).toLowerCase(Locale.ROOT).contains(term)) continue;
+                matches = true;
                 cards.add(pluginCard(ui, entry, cardWidth));
                 if (cards.size() == columns) { rows.add(horizontal(ui, 12, PhoenixRender.integers(cards))); cards.clear(); }
             }
             if (!cards.isEmpty()) rows.add(horizontal(ui, 12, PhoenixRender.integers(cards)));
-            boolean matches = false;
-            for (PluginManager.Entry entry : manager.entries.values()) if ((!enabledOnly || entry.status == PluginManager.Status.RUNNING)
-                && (entry.pack.name + " " + entry.pack.description + " " + entry.pack.author).toLowerCase(Locale.ROOT).contains(term)) matches = true;
             if (!matches) rows.add(ui.label(enabledOnly && term.isEmpty() ? "No enabled plugins" : "No matches", 14, 400, ui.muted));
             if (width < 540) rows.add(horizontal(ui, 12, ui.link("Manage plugins", (event, payload) -> show("@manage", "")),
                 ui.link("Commands", (event, payload) -> show("@commands", ""))));

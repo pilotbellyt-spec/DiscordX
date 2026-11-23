@@ -44,6 +44,7 @@ final class PluginManager {
     Activity activity;
     NativeDiscordUi ui;
     final Map<Activity, ArrayList<discordx.api.Registration>> nativeModals = new java.util.WeakHashMap<>();
+    final java.util.concurrent.atomic.AtomicInteger observedDeletes = new java.util.concurrent.atomic.AtomicInteger();
     String notice = "";
     private boolean initialized;
     private final Map<String, discordx.api.PluginInfo> bundled = new LinkedHashMap<>();
@@ -188,11 +189,17 @@ final class PluginManager {
                 org.json.JSONObject data = dispatch.optJSONObject("d");
                 org.json.JSONObject user = data == null ? null : data.optJSONObject("user");
                 String id = user == null ? null : user.optString("id");
+                if (!java.util.Objects.equals(cache.account, id)) ProfileIdentity.resetAccount();
                 cache.account = Ids.snowflake(id) ? id : null;
             }
+            String type = dispatch.optString("t");
+            boolean deletion = "MESSAGE_DELETE".equals(type) || "MESSAGE_DELETE_BULK".equals(type);
+            if (deletion) observedDeletes.incrementAndGet();
             String original = dispatch.toString();
             if (!messageActions.isEmpty()) MessageIdentity.frame(dispatch);
-            org.json.JSONObject updated = hooks.fold(Hooks.GATEWAY_JSON, dispatch, (callback, value) -> {
+            org.json.JSONObject updated = hooks.foldOwned(Hooks.GATEWAY_JSON, dispatch, (scope, callback, value) -> {
+                String delivered = value.optString("t");
+                if ("MESSAGE_DELETE".equals(delivered) || "MESSAGE_DELETE_BULK".equals(delivered)) scope.receivedDeletes.incrementAndGet();
                 try { return java.util.Objects.requireNonNull(callback.transform(connection, new org.json.JSONObject(value.toString())), "Gateway transform returned null"); }
                 catch (org.json.JSONException error) { throw new IllegalArgumentException(error); }
             });

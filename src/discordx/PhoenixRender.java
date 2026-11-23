@@ -112,6 +112,64 @@ final class PhoenixRender {
         return false;
     }
 
+    @SuppressWarnings("unchecked")
+    private Object spanMap(Map<String,Object> values) throws ReflectiveOperationException {
+        Object result = payloadFields.getDeclaringClass().getConstructor().newInstance();
+        ((Map<String,Object>)payloadFields.get(result)).putAll(values);
+        return result;
+    }
+
+    Object plainSpans(Object spans) throws ReflectiveOperationException {
+        if (!listValues.getDeclaringClass().isInstance(spans)) return spans;
+        StringBuilder text = new StringBuilder();
+        for (Object part : (java.util.List<?>)listValues.get(spans)) {
+            if (!payloadFields.getDeclaringClass().isInstance(part)) return spans;
+            Object value = ((Map<?,?>)payloadFields.get(part)).get("text");
+            if (!(value instanceof String)) return spans;
+            text.append(value);
+        }
+        Object result = array.newInstance();
+        arrayAdd.invoke(result, spanMap(java.util.Collections.<String,Object>singletonMap("text", text.toString())));
+        return result;
+    }
+
+    Object mentionAvatars(Object spans, String message, HookRegistry hooks) throws ReflectiveOperationException {
+        if (!listValues.getDeclaringClass().isInstance(spans)) return spans;
+        java.util.List<?> items = (java.util.List<?>) listValues.get(spans);
+        Object result = null;
+        for (int i = 0; i < items.size(); i++) {
+            Object item = items.get(i);
+            if (payloadFields.getDeclaringClass().isInstance(item)) {
+                Map<?,?> props = (Map<?,?>)payloadFields.get(item);
+                Object text = props.get("text");
+                if (text instanceof String && ((String)text).startsWith("\u2068@") && props.containsKey("bg") && props.containsKey("link")) {
+                    String name = ((String)text).substring(2).replace("\u2069", "");
+                    String url = hooks.fold(discordx.api.Hooks.MENTION_AVATAR, (String)null,
+                        (callback, current) -> current != null ? current : callback.apply(message, name));
+                    if (url != null) {
+                        if (result == null) {
+                            result = array.newInstance();
+                            for (int n = 0; n < i; n++) arrayAdd.invoke(result, items.get(n));
+                        }
+                        Map<String,Object> image = new LinkedHashMap<>();
+                        image.put("uri", url);
+                        image.put("size", 16.0);
+                        image.put("radius", 8.0);
+                        image.put("pool", "small");
+                        Map<String,Object> carrier = new LinkedHashMap<>();
+                        carrier.put("text", "\u2060");
+                        carrier.put("link", props.get("link"));
+                        carrier.put("bg", props.get("bg"));
+                        carrier.put("image", spanMap(image));
+                        arrayAdd.invoke(result, spanMap(carrier));
+                    }
+                }
+            }
+            if (result != null) arrayAdd.invoke(result, item);
+        }
+        return result == null ? spans : result;
+    }
+
     final class Batch {
         final int count;
         final int[] operations, ids;
@@ -213,9 +271,13 @@ final class PhoenixRender {
             for (int i = 0; i < properties.length; i += 2) {
                 int key = (Integer) propertyCodes.get(properties[i]);
                 Object value = properties[i + 1];
-                if (value instanceof float[]) {
+                if (value == null) {
+                    put.invoke(operands, key, (byte) 0, 0L, null);
+                } else if (value instanceof float[]) {
                     float[] sides = (float[]) value;
                     putInsets.invoke(operands, sides[0], sides[1], sides[2], sides[3], key);
+                } else if (listValues.getDeclaringClass().isInstance(value) || payloadFields.getDeclaringClass().isInstance(value)) {
+                    put.invoke(operands, key, (byte) 6, 0L, value);
                 } else if (value instanceof String[]) {
                     Object list = array.newInstance();
                     for (String item : (String[]) value) arrayAdd.invoke(list, item);
@@ -226,6 +288,8 @@ final class PhoenixRender {
                     put.invoke(operands, key, (byte) ((Boolean) value ? 2 : 1), 0L, null);
                 } else if (value instanceof Long) {
                     put.invoke(operands, key, (byte) 4, (Long) value, null);
+                } else if (value instanceof Double) {
+                    put.invoke(operands, key, (byte) 5, Double.doubleToRawLongBits((Double)value), null);
                 } else if (value instanceof Integer) {
                     put.invoke(operands, key, (byte) 3, ((Integer) value).longValue(), null);
                 } else {

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "custom_themes",
   "name": "Custom Themes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "DiscordX",
   "description": "Set background, text, and accent colors.",
   "entrypoint": "discordx.plugins.custom_themes.Plugin",
@@ -16,6 +16,8 @@
     "text_color",
     "foreground_color",
     "gradient",
-    "ui.settings"
+    "ui.settings",
+    "default_profile_colors",
+    "ui.preference_toggles"
   ]
 }

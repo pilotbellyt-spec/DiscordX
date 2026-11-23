@@ -28,7 +28,14 @@ final class NativeDiscordUi {
     private final Map<Integer, Insertion> insertions = new HashMap<>();
     private final Map<String, Long> colors = new HashMap<>();
     private final NativeSettings settingsPage;
+    private int searchInput = -1, searchParent = -1, searchRow = -1, searchGroup = -1;
+    private NativeControls searchResults;
+    private String searchTerm = "";
     final PluginPages pluginPages;
+    private final Set<Integer> profileArtwork = new HashSet<>(), profileScrolls = new HashSet<>();
+    private final Map<Integer,Integer> profileStyles = new HashMap<>();
+    private final Map<Integer,Long> profileBackgrounds = new HashMap<>();
+    private final EmojiPicker emojiPicker = new EmojiPicker(this);
     private final ChatSurface chat = new ChatSurface(this);
     private int sequence = 0x70000000;
     private boolean submitting, loggedFailure;
@@ -157,12 +164,213 @@ final class NativeDiscordUi {
                 }, true);
                 insertions.get(scroll.id).subject = user;
             }
+            if (DiscordX.manager.hooks.has(discordx.api.Hooks.MENTION_AVATAR)) {
+                for (int row = 0; row < batch.count; row++) {
+                    if (batch.kind(row) != PhoenixRender.CREATE && batch.kind(row) != PhoenixRender.UPDATE) continue;
+                    Node node = nodes.get(batch.id(row));
+                    if (node == null || node.spans == null) continue;
+                    for (int slot = batch.start(row); slot < batch.start(row) + batch.size(row); slot++) {
+                        if (!"spans".equals(batch.key(slot))) continue;
+                        Node content = node.access.startsWith("message.content:") ? node :
+                            ancestor(node.id, parent -> parent.access.startsWith("message.content:"));
+                        if (content == null) continue;
+                        Object styled = render.mentionAvatars(node.spans, content.access.substring("message.content:".length()), DiscordX.manager.hooks);
+                        if (styled == node.spans) continue;
+                        if (output == null) output = render.addTo(batch);
+                        output.update(node.id, "spans", styled);
+                    }
+                }
+            }
+            if (searchResults != null && changed.contains(searchParent)) {
+                if (output == null) output = render.addTo(batch);
+                attachSearchResults(output);
+            }
+            output = profileAppearance(batch, output);
+            output = emojiPicker.render(batch, output, changed);
             output = chat.render(batch, output, changed);
             return output == null ? incoming : output.build();
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             failure("Could not integrate the Phoenix render batch", error);
             return incoming;
         }
+    }
+
+    private static boolean decorativeMedia(Node node) {
+        String uri = node.uri;
+        return uri.contains("/banners/") || uri.contains("/avatar-decoration-presets/")
+            || uri.contains("/profile-effects/") || uri.contains("/profile_effects/")
+            || uri.contains("/nameplates/") || node.tag("profile-avatar-decoration") || node.tag("profile-nameplate") || node.tag("profile-effect") || node.tag("profile-banner-image");
+    }
+
+    private static final int SURFACE = 1, BANNER = 2, TITLE = 4, ART = 8, DEFAULT_BASE = 16;
+
+    private PhoenixRender.Builder profileAppearance(PhoenixRender.Batch source, PhoenixRender.Builder output)
+            throws ReflectiveOperationException {
+        HookRegistry hooks = DiscordX.manager.hooks;
+        boolean suppress = hooks.has(discordx.api.Hooks.PROFILE_APPEARANCE);
+        boolean recolor = hooks.has(discordx.api.Hooks.DEFAULT_PROFILE_COLORS);
+        if ((!suppress && !recolor || profileScrolls.isEmpty()) && profileStyles.isEmpty()) return output;
+        Map<Integer,Integer> next = new HashMap<>();
+        Map<Integer,Long> backgrounds = new HashMap<>();
+        for (int id : profileScrolls) {
+            Node scroll = nodes.get(id);
+            if (scroll == null) continue;
+            Node sheet = ancestor(id, node -> "sheet".equals(node.type) || node.tag("profile-page"));
+            if (sheet == null) continue;
+            String identity = profileUser(id, 0, true);
+            if (identity == null || identity.isEmpty()) {
+                AvatarMatch match = new AvatarMatch();
+                findProfileAvatar(id, 0, match);
+                identity = match.user();
+            }
+            final String user = identity;
+            Boolean selected = ProfileIdentity.customPalette(user, null);
+            boolean paintedBackdrop = hasProfileGradient(sheet.id, scroll.id, 0);
+            boolean custom = Boolean.TRUE.equals(selected) || paintedBackdrop;
+            // Only the sheet's own stock base is eligible. An explicit gradient or non-default fill stays intact.
+            if (recolor && Boolean.FALSE.equals(selected) && !paintedBackdrop && stockProfileBase(sheet.background)) {
+                int[] palette = hooks.fold(discordx.api.Hooks.DEFAULT_PROFILE_COLORS, (int[])null,
+                    (provider, old) -> old == null ? provider.get() : old);
+                if (palette != null && palette.length == 2) {
+                    next.put(sheet.id, DEFAULT_BASE);
+                    backgrounds.put(sheet.id, 0xff000000L | (palette[0] & 0xffffffL));
+                }
+            }
+            if (!suppress || !hooks.fold(discordx.api.Hooks.PROFILE_APPEARANCE, false,
+                    (filter, previous) -> previous || filter.test(user))) continue;
+            // Keep Phoenix's original default header, text and controls when no theme was selected.
+            if (paintedBackdrop) {
+                next.put(id, SURFACE);
+                backgrounds.put(id, sheet.background);
+            }
+            // Phoenix draws its solid banner as the first stack in the scroll content.
+            Node content = scroll;
+            for (int hop = 0; hop < 4 && content != null && content.children.length == 1; hop++)
+                content = nodes.get(content.children[0]);
+            if (content != null && content.children.length > 1) {
+                Node header = nodes.get(content.children[0]);
+                if (paintedBackdrop && header != null && "stack".equals(header.type) && header.height >= 60) {
+                    next.put(header.id, BANNER);
+                    backgrounds.put(header.id, sheet.background);
+                }
+            }
+            for (int part : profileArtwork) {
+                Node n = nodes.get(part);
+                if (n == null || ancestor(part, parent -> parent.id == id) == null) continue;
+                int flags = next.getOrDefault(part, 0);
+                if (decorativeMedia(n)) flags |= ART;
+                if (custom && n.backgroundGradient != null) {
+                    flags |= SURFACE;
+                    backgrounds.put(part, sheet.background);
+                }
+                if ("text".equals(n.type) && (n.textGradient != null || paintedBackdrop && n.fontSize >= 20)) flags |= TITLE;
+
+                if (flags != 0) next.put(part, flags);
+            }
+        }
+        Set<Integer> affected = new HashSet<>(next.keySet());
+        affected.addAll(profileStyles.keySet());
+        Set<Integer> touched = new HashSet<>();
+        for (int row = 0; row < source.count; row++)
+            if (source.kind(row) == PhoenixRender.CREATE || source.kind(row) == PhoenixRender.UPDATE) touched.add(source.id(row));
+        for (int id : affected) {
+            Node n = nodes.get(id);
+            if (n == null) continue;
+            int old = profileStyles.getOrDefault(id, 0), flags = next.getOrDefault(id, 0);
+            if (old == flags && !touched.contains(id) && java.util.Objects.equals(profileBackgrounds.get(id), backgrounds.get(id))) continue;
+            if (output == null) output = render.addTo(source);
+            int both = old | flags;
+            if ((both & (SURFACE | BANNER | DEFAULT_BASE)) != 0) {
+                output.update(id, "background", backgrounds.getOrDefault(id, n.background));
+                if (n.backgroundGradient != null) output.update(id, "backgroundGradient", flags == 0 ? n.backgroundGradient : null);
+            }
+            if ((both & ART) != 0) output.update(id, "opacity", (flags & ART) != 0 ? 0.0 : n.opacity);
+            if ((both & TITLE) != 0) {
+                boolean plain = (flags & TITLE) != 0;
+                output.update(id, "color", plain ? NativeControls.color(isDark() ? 0xfff2f3f5 : 0xff242529) : n.color);
+                if (n.textGradient != null) output.update(id, "textGradient", plain ? null : n.textGradient);
+                if (n.spans != null) output.update(id, "spans", plain ? render.plainSpans(n.spans) : n.spans);
+            }
+        }
+        profileStyles.clear();
+        profileStyles.putAll(next);
+        profileBackgrounds.clear();
+        profileBackgrounds.putAll(backgrounds);
+        return output;
+    }
+
+    private static boolean stockProfileBase(long argb) {
+        return argb == 0xff000000L || argb == 0xffffffffL;
+    }
+
+    private boolean hasProfileGradient(int id, int scroll, int depth) {
+        if (depth > 7) return false;
+        Node node = nodes.get(id);
+        if (node == null) return false;
+        if (node.backgroundGradient != null || "gradient".equals(node.type) || node.gradient != null) return true;
+        // Only the backdrop counts. Gradients inside a badge or avatar are independent cosmetics.
+        if (id == scroll) return false;
+        for (int child : node.children) if (hasProfileGradient(child, scroll, depth + 1)) return true;
+        return false;
+    }
+
+    private void attachSearchResults(PhoenixRender.Builder batch) {
+        Node parent = nodes.get(searchParent);
+        if (parent == null) return;
+        for (int i = 0; i < parent.children.length; i++) if (parent.children[i] == searchRow) {
+            batch.children(parent.id, inserting(parent.children, i + 1, searchGroup));
+            return;
+        }
+    }
+
+    private void clearSearch(PhoenixRender.Builder batch) throws ReflectiveOperationException {
+        if (searchResults != null) {
+            Node parent = nodes.get(searchParent);
+            if (parent != null) batch.children(parent.id, parent.children);
+            discard(batch, searchResults);
+        }
+        searchResults = null;
+        searchInput = searchParent = searchRow = searchGroup = -1;
+        searchTerm = "";
+    }
+
+    private void searchSettings(Node input, String value) throws ReflectiveOperationException {
+        String term = value.trim().toLowerCase(java.util.Locale.ROOT);
+        PhoenixRender.Builder batch = builder();
+        clearSearch(batch);
+        Node row = input;
+        Node parent = nodes.get(parents.get(row.id));
+        while (parent != null && ("row".equals(parent.direction) || !"view".equals(parent.type))) {
+            row = parent;
+            parent = nodes.get(parents.get(row.id));
+        }
+        if (!term.isEmpty() && parent != null) {
+            searchInput = input.id;
+            searchTerm = term;
+            NativeControls ui = new NativeControls(this, batch);
+            java.util.ArrayList<Integer> matches = new java.util.ArrayList<>();
+            for (PluginManager.Entry entry : DiscordX.manager.entries.values()) {
+                if (entry.pack.name.toLowerCase(java.util.Locale.ROOT).contains(term)) {
+                    matches.add(ui.row(entry.pack.name, "DiscordX", "", ui.card,
+                        (event, payload) -> settingsPage.openDetails(entry.pack.id)));
+                }
+            }
+            for (PluginUiBridge.Setting setting : DiscordX.manager.settings) {
+                if (setting.scope.active && setting.title.toLowerCase(java.util.Locale.ROOT).contains(term))
+                    matches.add(ui.row(setting.title, setting.scope.info().name, "", ui.card,
+                        (event, payload) -> setting.scope.guard(() -> setting.scope.ui().open(setting.title, setting.page))));
+            }
+            if (!matches.isEmpty()) {
+                searchResults = ui;
+                searchParent = parent.id;
+                searchRow = row.id;
+                searchGroup = ui.column(0, NativeControls.insets(0, 0));
+                batch.children(searchGroup, PhoenixRender.integers(matches));
+                attachSearchResults(batch);
+                events.putAll(ui.actions);
+            }
+        }
+        submit(batch);
     }
 
     private interface BuildInsertion { int create(NativeControls ui) throws ReflectiveOperationException; }
@@ -204,10 +412,16 @@ final class NativeDiscordUi {
                             case "accessibilityId": node.access = string(value); break;
                             case "direction": node.direction = string(value); break;
                             case "nativeID": node.nativeId = string(value); break;
+                            case "backgroundGradient": node.backgroundGradient = value; break;
+                            case "textGradient": node.textGradient = value; break;
+                            case "fontSize": node.fontSize = dimension(batch, p); break;
+                            case "gradient": node.gradient = value; break;
+                            case "spans": node.spans = value; break;
                             case "text":
                                 node.text = string(value);
                                 if (node.text.isEmpty() && render.containsText(value, "Member Since", 4)) node.text = "Member Since";
                                 break;
+                            case "opacity": node.opacity = batch.tags[p] == 5 ? Double.longBitsToDouble(batch.numbers[p]) : dimension(batch, p); break;
                             case "uri": node.uri = string(value); break;
                             case "background": node.background = rgba(batch, p); break;
                             case "color": node.color = rgba(batch, p); break;
@@ -219,7 +433,13 @@ final class NativeDiscordUi {
                         if ("image".equals(node.type) && node.uri.isEmpty() && value instanceof String
                                 && ((String) value).startsWith("https://") && AVATAR.matcher((String) value).matches()) node.uri = (String) value;
                     }
+                    if (node.tag("profile-scroll") || node.tag("profile-main-scroll")) profileScrolls.add(id);
+                    else profileScrolls.remove(id);
+                    if (node.backgroundGradient != null || decorativeMedia(node) || node.textGradient != null ||
+                            "text".equals(node.type) && node.fontSize >= 20) profileArtwork.add(id);
+                    else profileArtwork.remove(id);
                     chat.observe(node);
+                    emojiPicker.observe(node);
                     if (node.tag("settings-phone") || node.tag("settings-tablet")) settings.add(id);
                     if (node.tag("profile-sheet") || node.tag("profile-main-scroll")) profiles.add(id);
                     if (node.tag("member-since") || node.tag("member-since-discord") || "Member Since".equals(node.text)) membership.add(id);
@@ -234,6 +454,16 @@ final class NativeDiscordUi {
                     break;
                 case PhoenixRender.DELETE:
                     for (int dead : batch.children(i)) {
+                        if (dead == searchInput || dead == searchParent || dead == searchRow) {
+                            int input = searchInput;
+                            main.post(() -> {
+                                if (input != searchInput || nodes.containsKey(dead)) return;
+                                try { PhoenixRender.Builder cleanup = builder(); clearSearch(cleanup); submit(cleanup); }
+                                catch (ReflectiveOperationException error) { failure("Cannot close settings search", error); }
+                            });
+                        }
+                        profileArtwork.remove(dead); profileScrolls.remove(dead); profileStyles.remove(dead);
+                        emojiPicker.removed(dead);
                         chat.removed(dead);
                         Node removed = nodes.remove(dead);
                         if (removed != null) for (int child : removed.children) parents.remove(child, dead);
@@ -472,6 +702,7 @@ final class NativeDiscordUi {
     }
 
     Iterable<Node> visibleNodes() { return nodes.values(); }
+    boolean insertEmoji(String token) throws ReflectiveOperationException { return chat.insertEmoji(token); }
     Integer parentId(int id) { return parents.get(id); }
     void changeDraft(android.view.View input, String text) throws ReflectiveOperationException {
         render.changeDraft(renderer, viewState(input), text);
@@ -520,7 +751,14 @@ final class NativeDiscordUi {
     boolean event(int id, String event, Object payload, Object completion) {
         Node screen = nodes.get(id);
         try {
-            if (chat.event(screen, event, payload)) {
+            if (screen != null && screen.tag("user_settings_search_input") && "changeText".equals(event)) {
+                String query = inputText(payload);
+                if (query != null) main.post(() -> {
+                    try { if (nodes.get(id) == screen) searchSettings(screen, query); }
+                    catch (ReflectiveOperationException error) { failure("Cannot update settings search", error); }
+                });
+            }
+            if (emojiPicker.event(screen, event) || chat.event(screen, event, payload)) {
                 try { render.complete(completion); }
                 catch (ReflectiveOperationException error) { failure("Cannot finish consumed composer event", error); }
                 return true;
@@ -597,6 +835,11 @@ final class NativeDiscordUi {
         }
     }
     void reset() {
+        searchResults = null;
+        searchInput = searchParent = searchRow = searchGroup = -1;
+        searchTerm = "";
+        profileArtwork.clear(); profileScrolls.clear(); profileStyles.clear(); profileBackgrounds.clear();
+        emojiPicker.reset();
         chat.reset();
         pluginPages.reset();
         events.clear();
@@ -624,10 +867,13 @@ final class NativeDiscordUi {
                         discard(batch, insertion.ui);
                         iterator.remove();
                     }
+                    for (Node node : nodes.values()) if (node.spans != null) batch.update(node.id, "spans", node.spans);
                     chat.invalidate(null);
                     Object updated = onBatch(renderer, batch.build());
                     render.submitBatch(renderer, updated);
                 }
+                Node input = nodes.get(searchInput);
+                if (input != null) searchSettings(input, searchTerm);
                 settingsPage.refresh();
             } catch (ReflectiveOperationException | RuntimeException error) { failure("Could not refresh plugin contributions", error); }
         });
@@ -690,6 +936,9 @@ final class NativeDiscordUi {
     static final class Node {
         final int id;
         final String type;
+        double opacity = 1.0;
+        Object spans, backgroundGradient, textGradient, gradient;
+        int fontSize;
         String direction = "", access = "", nativeId = "", text = "", uri = "", label = "";
         long color, background;
         int width, height, radius;

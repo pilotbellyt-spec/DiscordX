@@ -26,10 +26,16 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **GhostMode** suppresses your outgoing typing notifications. An existing enabled HideTyping 1.x bundled installation migrates to GhostMode.
 - **DeArrow** replaces eligible YouTube embed titles and thumbnails with community branding. It sends video IDs to DeArrow. Additional uncached videos in a batch may update when the messages load again.
 - **MessageLatency** shows the delay between a message nonce and its server ID for delays of 2 to under 120 seconds. Messages without a timestamp-bearing nonce have no label.
-- **NoProfileThemes** removes profile colors, effects, avatar decorations, and display name styles locally. Enable **Keep my own profile appearance** to preserve your own cosmetics.
+- **NoProfileThemes** removes profile colors, banners, effects, nameplates, avatar decorations, and display name styles locally. Enable **Keep my own profile appearance** to preserve your own cosmetics.
 - **Translate** adds a message action that sends the selected message to Google Translate. Set the target language code in plugin settings. It defaults to the device language. For automatic translation of new messages, enter explicit channel IDs in settings. Messages in those channels are sent to Google and translations appear below the original content.
-- **FakeNitro** shares custom emoji as normal PNG or GIF links. It recognizes explicit Discord emoji markup and unique `:name:` shortcodes from cached server emoji.
+- **FakeNitro** inserts a CDN link when you select a custom emoji in the native composer picker. It also converts explicit emoji markup and unique `:name:` shortcodes when sending.
 - **Plugin Example** demonstrates buttons, local replies, message annotations, profile actions, a local echo command, and configurable message transformations.
+
+- **Mention Avatars** adds the mentioned user's avatar to the mention in chat.
+- **Text Replace** applies saved literal replacements to outgoing messages. The longest matching phrase wins.
+- **NoTelemetry** blocks recognized analytics and error-report POST requests.
+
+In **Custom Themes → Edit palette**, **Theme default profiles** uses the palette background for profiles without personal or server theme colors. **NoProfileThemes** can be enabled separately.
 
 Each built-in is a separate DEX ZIP under `src/plugins/`. See the [plugin API](PLUGIN_API.md).
 

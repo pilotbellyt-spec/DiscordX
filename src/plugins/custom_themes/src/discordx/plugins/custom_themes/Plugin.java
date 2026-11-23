@@ -13,6 +13,11 @@ public final class Plugin implements discordx.api.Plugin {
         SharedPreferences prefs = context.preferences();
         ThemePalette.set(new ThemePalette(prefs.getInt("theme_surface", ThemePalette.DEFAULT_SURFACE),
             prefs.getInt("theme_text", ThemePalette.DEFAULT_TEXT), prefs.getInt("theme_accent", ThemePalette.DEFAULT_ACCENT)));
+        context.register(Hooks.DEFAULT_PROFILE_COLORS, () -> {
+            if (!prefs.getBoolean("theme_default_profiles", true)) return null;
+            int color = prefs.getInt("theme_surface", ThemePalette.DEFAULT_SURFACE) & 0xffffff;
+            return new int[] {color, color};
+        });
         context.register(Hooks.FILL_COLOR, ThemePalette::fill);
         context.register(Hooks.TEXT_COLOR, ThemePalette::baseText);
         context.register(Hooks.FOREGROUND_COLOR, ThemePalette::foreground);
@@ -21,6 +26,7 @@ public final class Plugin implements discordx.api.Plugin {
             hex(prefs.getInt("theme_text", ThemePalette.DEFAULT_TEXT)), hex(prefs.getInt("theme_accent", ThemePalette.DEFAULT_ACCENT))};
         String[] labels = {"Background", "Text", "Accent"}, status = {""};
         context.ui().settings("Edit palette", page -> {
+            page.preferenceToggle("Theme default profiles", "theme_default_profiles", true);
             for (int i = 0; i < labels.length; i++) {
                 final int slot = i;
                 page.input(labels[i], values[i], false, value -> values[slot] = value);

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "mention_avatars",
+  "name": "Mention Avatars",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Show avatars inside user mentions in chat.",
+  "entrypoint": "discordx.plugins.mention_avatars.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "mention_avatar",
+    "http_response",
+    "gateway_json"
+  ]
+}

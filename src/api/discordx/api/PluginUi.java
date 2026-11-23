@@ -30,6 +30,7 @@ public interface PluginUi {
         void image(String url, String description);
         void input(String label, String value, boolean multiline, Consumer<String> changed);
         void button(String label, Runnable action);
+        void preferenceToggle(String label, String key, boolean fallback);
         void toggle(String label, boolean checked, Consumer<Boolean> changed);
     }
 }

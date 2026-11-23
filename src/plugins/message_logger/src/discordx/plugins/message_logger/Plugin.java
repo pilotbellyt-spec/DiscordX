@@ -22,6 +22,13 @@ public final class Plugin implements discordx.api.Plugin {
             @Override public void closed(Hooks.Connection connection) { MessageLogger.socketClosed(connection, 0); }
             @Override public byte[] frame(Hooks.Connection connection, byte[] bytes) { return bytes; }
         });
+        android.content.SharedPreferences prefs = context.preferences();
+        context.ui().settings("Message history", page -> {
+            page.preferenceToggle("Log deleted messages", "deletes", true);
+            page.preferenceToggle("Log edited messages", "edits", true);
+            page.preferenceToggle("Show inline edit history", "inline", true);
+            page.button("Clear cached history", MessageLogger::clear);
+        });
         Chat chat = context.chat();
         chat.tint(id -> {
             MessageLogger.Decoration history = MessageLogger.history(id);
@@ -34,12 +41,12 @@ public final class Plugin implements discordx.api.Plugin {
         });
         chat.accessory(Chat.Placement.CONTENT, id -> {
             MessageLogger.Decoration history = MessageLogger.history(id);
-            return history == null || history.versions.isEmpty() ? null
+            return !prefs.getBoolean("inline", true) || history == null || history.versions.isEmpty() ? null
                 : new Chat.Label(String.join("\n", history.versions), 0xffaaa7b3);
         });
         context.register(Hooks.GATEWAY_JSON, (connection, event) -> {
             byte[] json = event.toString().getBytes(StandardCharsets.UTF_8);
-            byte[] marked = MessageLogger.onFrame(connection, 0, json);
+            byte[] marked = MessageLogger.onFrame(connection, 0, json, prefs.getBoolean("edits", true), prefs.getBoolean("deletes", true));
             if (marked == json) return event;
             JSONObject data = event.optJSONObject("d");
             String id = data == null ? "" : data.optString("id");

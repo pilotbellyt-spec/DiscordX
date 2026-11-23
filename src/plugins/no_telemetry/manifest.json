@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "no_telemetry",
+  "name": "NoTelemetry",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Block Discord analytics and error-report submissions.",
+  "entrypoint": "discordx.plugins.no_telemetry.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "http_request"
+  ]
+}

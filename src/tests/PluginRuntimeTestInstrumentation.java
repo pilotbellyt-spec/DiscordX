@@ -76,7 +76,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                     && manager.entries.get("hide_typing").status == PluginManager.Status.DISABLED,
                 "Existing outgoing typing preference migrates to GhostMode only");
             manager.disableAll();
-            check(manager.entries.size() == 18, "Eighteen independently packaged built-ins discovered");
+            check(manager.entries.size() == 21, "Twenty-one independently packaged built-ins discovered");
             for (PluginManager.Entry entry : new java.util.ArrayList<>(manager.entries.values())) {
                 manager.toggle(entry);
                 check(entry.status == PluginManager.Status.RUNNING, "Loaded built-in: " + entry.pack.id + " " + entry.error);
@@ -175,10 +175,70 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                     (filter, value) -> filter.apply(new Hooks.Request(channel + "messages", "POST"))) == null,
                     "GhostMode passes message sends through");
                 break;
+            case "custom_themes":
+                String route = api + "users/123456789012345678/profile?guild_id=234567890123456789";
+                byte[] plain = "{\"user_profile\":{\"bio\":\"hello\"},\"guild_member_profile\":null}".getBytes(StandardCharsets.UTF_8);
+                ProfileIdentity.response(route, plain);
+                int[] defaultStops = manager.hooks.fold(Hooks.DEFAULT_PROFILE_COLORS, (int[])null, (provider, old) -> provider.get());
+                check(defaultStops != null && Boolean.FALSE.equals(ProfileIdentity.customPalette("123456789012345678", "234567890123456789")),
+                    "Custom Themes supplies a surface for a stock profile independently");
+                byte[] guildColors = "{\"user_profile\":{},\"guild_member_profile\":{\"theme_colors\":[0,0]}}".getBytes(StandardCharsets.UTF_8);
+                ProfileIdentity.response(route, guildColors);
+                check(Boolean.TRUE.equals(ProfileIdentity.customPalette("123456789012345678", null)), "An explicitly black guild palette is protected");
+                byte[] globalColors = "{\"user_profile\":{\"theme_colors\":[1,2]}}".getBytes(StandardCharsets.UTF_8);
+                ProfileIdentity.response(route, globalColors);
+                check(Boolean.TRUE.equals(ProfileIdentity.customPalette("123456789012345678", "234567890123456789")), "A personal palette takes precedence");
+                manager.preferences(id).edit().putBoolean("theme_default_profiles", false).apply();
+                check(manager.hooks.fold(Hooks.DEFAULT_PROFILE_COLORS, (int[])null, (provider, old) -> provider.get()) == null, "Default profile theming switches off independently");
+                ProfileIdentity.resetAccount();
+                manager.preferences(id).edit().remove("theme_default_profiles").apply();
+                break;
+            case "no_telemetry":
+                for (String url : new String[] {api + "science", channel + "messages", "https://example.org/api/v9/science"}) {
+                    Hooks.Reply response = manager.hooks.fold(Hooks.HTTP_REQUEST, (Hooks.Reply)null,
+                        (filter, previous) -> filter.apply(new Hooks.Request(url, "POST")));
+                    check((response != null) == url.equals(api + "science"), "NoTelemetry restricts analytics interception to the collection route");
+                }
+                break;
+            case "mention_avatars":
+                String mentions = "[{\"id\":\"123\",\"mentions\":[{\"id\":\"123456789012345678\",\"username\":\"alice\"}]}]";
+                manager.hooks.each(Hooks.HTTP_RESPONSE, callback -> callback.received(channel + "messages", mentions.getBytes(StandardCharsets.UTF_8)));
+                String avatar = manager.hooks.fold(Hooks.MENTION_AVATAR, (String)null, (callback, old) -> callback.apply("123", "alice"));
+                check(avatar != null && avatar.contains("/embed/avatars/"), "Mention Avatars resolves a message-scoped user from history");
+                break;
+            case "text_replace":
+                manager.stop(manager.entries.get(id));
+                manager.preferences(id).edit().putString("brb", "be right back").putString("br", "short").apply();
+                manager.toggle(manager.entries.get(id));
+                check("be right back short".equals(ChatSubmission.apply(manager, "brb br")), "Text Replace applies longest literal rules without cascading");
+                break;
             case "no_profile_themes":
+                String stock = "{\"user\":{\"username\":\"tester\",\"accent_color\":null,\"banner_color\":\"#778899\"},\"user_profile\":{\"theme_colors\":null}}";
+                check(stock.equals(body(api + "users/123456789012345678/profile", stock)),
+                    "NoProfileThemes leaves the stock profile and its derived banner color untouched");
                 String profile = body(api + "users/123456789012345678/profile", "{\"user_profile\":{\"theme_colors\":[1,2],\"bio\":\"test\"}}");
                 org.json.JSONObject data = new org.json.JSONObject(profile).getJSONObject("user_profile");
                 check(data.isNull("theme_colors") && "test".equals(data.getString("bio")), "NoProfileThemes preserves other profile fields");
+                String themed = "{\"user\":{\"id\":\"123456789012345678\",\"username\":\"tester\",\"banner\":\"a_animated\","
+                    + "\"avatar\":\"portrait\",\"avatar_decoration_data\":{},\"collectibles\":{\"nameplate\":{}}},"
+                    + "\"guild_member_profile\":{\"banner\":\"static\",\"profile_effect\":{},\"theme_colors\":[1,2]}}";
+                org.json.JSONObject neutral = new org.json.JSONObject(body(api + "users/123456789012345678/profile", themed));
+                org.json.JSONObject person = neutral.getJSONObject("user");
+                check(!person.has("banner") && !person.has("collectibles") && !person.has("avatar_decoration_data")
+                    && "portrait".equals(person.getString("avatar")) && neutral.getJSONObject("guild_member_profile").length() == 0,
+                    "NoProfileThemes removes banners, guild colors, nameplates, decorations and effects without removing the avatar");
+                Object profileSocket = new Object();
+                manager.opened(profileSocket, 0, "wss://gateway.discord.gg");
+                manager.preferences(id).edit().putBoolean("keepOwn", true).apply();
+                String ready = "{\"op\":0,\"t\":\"READY\",\"d\":{\"user\":{\"id\":\"123456789012345678\",\"collectibles\":{}},"
+                    + "\"guilds\":[{\"members\":[{\"user\":{\"id\":\"200\",\"collectibles\":{},\"username\":\"other\"}}]}]}}";
+                String cleaned = new String(manager.frame(profileSocket, 0, ready.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+                org.json.JSONObject readyData = new org.json.JSONObject(cleaned).getJSONObject("d");
+                org.json.JSONObject otherUser = readyData.getJSONArray("guilds").getJSONObject(0).getJSONArray("members")
+                    .getJSONObject(0).getJSONObject("user");
+                check(readyData.getJSONObject("user").has("collectibles") && !otherUser.has("collectibles") && otherUser.has("username"),
+                    "NoProfileThemes strips nested guild cosmetics while preserving the signed-in user's appearance");
+                manager.closed(profileSocket, 0);
                 break;
             case "message_latency":
                 String history = body(channel + "messages", "[{\"id\":\"1000000012582912000\",\"nonce\":\"1000000000000000000\",\"content\":\"test\"}]");
@@ -202,6 +262,21 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                     "Quick Jump preserves command-name collisions and unrelated responses");
                 break;
             case "fake_nitro":
+                Object emojiSocket = new Object();
+                manager.opened(emojiSocket, 0, "wss://gateway.discord.gg");
+                String catalogReady = "{\"op\":0,\"t\":\"READY\",\"d\":{\"guilds\":["
+                    + "{\"id\":\"10\",\"name\":\"Atlas\",\"emojis\":[{\"id\":\"123456789012345678\",\"animated\":true,\"name\":\"party\"}]},"
+                    + "{\"id\":\"20\",\"name\":\"Birch\",\"emojis\":[{\"id\":\"223456789012345678\",\"name\":\"party\"}]}]}}";
+                manager.frame(emojiSocket, 0, catalogReady.getBytes(StandardCharsets.UTF_8));
+                String picked = manager.hooks.fold(Hooks.PICKER_EMOJIS, (String)null,
+                    (handler, old) -> handler.link("223456789012345678", "party", ""));
+                check(picked.endsWith("223456789012345678.png?size=128"), "Native picker shares the selected emoji by ID across guilds");
+                manager.preferences(id).edit().putBoolean("named", true).apply();
+                String named = manager.hooks.fold(Hooks.PICKER_EMOJIS, (String)null,
+                    (handler, old) -> handler.link("123456789012345678", "party", ""));
+                check(named.startsWith("[:party:]") && named.equals(ChatSubmission.apply(manager, named)), "Sending a named picker link preserves its Markdown");
+                manager.preferences(id).edit().remove("named").apply();
+                manager.closed(emojiSocket, 0);
                 String emoji = "<a:party:123456789012345678>";
                 String rewritten = ChatSubmission.apply(manager, "hi " + emoji);
                 check(rewritten.equals("hi https://cdn.discordapp.com/emojis/123456789012345678.gif?size=128")
@@ -251,7 +326,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             }
             PluginManager reloaded = new PluginManager(target);
             reloaded.initializeOnce();
-            check(reloaded.entries.size() == 18, "Installed package selection persists across manager restart");
+            check(reloaded.entries.size() == 21, "Installed package selection persists across manager restart");
             manager.main.postDelayed(() -> {
                 try { check(!manager.preferences(example.info.id).getBoolean("async", true), "Managed asynchronous callbacks cannot run after disable"); finishReport(null); }
                 catch (Throwable error) { finishReport(error); }

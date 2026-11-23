@@ -44,6 +44,7 @@ public interface Chat {
     /** Read-only lookups on a worker thread. Results are independent JSON snapshots. */
     JSONObject cachedMessage(String channelId, String messageId);
     String selectedChannel();
+    String currentUserId();
     org.json.JSONArray queryCache(String select, String... arguments);
 
     final class Label {

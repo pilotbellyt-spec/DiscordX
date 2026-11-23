@@ -41,6 +41,15 @@ final class PluginPages {
             batch.children(page.modal, frame);
             ui.actions.put(page.modal, (event, value) -> close(page));
             pages.add(page);
+            page.listener = (prefs, key) -> {
+                if ((key != null && !page.keys.contains(key)) || page.pending) return;
+                page.pending = true;
+                owner.main.post(() -> {
+                    page.pending = false;
+                    if (page.scope.active && pages.contains(page)) refresh(page);
+                });
+            };
+            scope.preferences().registerOnSharedPreferenceChangeListener(page.listener);
             draw(page, batch);
             owner.submit(batch);
             owner.events.putAll(ui.actions);
@@ -48,6 +57,7 @@ final class PluginPages {
             page.registration = scope.ownUi(() -> { PluginPages current = host.get(); if (current != null) current.close(page); });
             return page.registration;
         } catch (ReflectiveOperationException | RuntimeException error) {
+            page.scope.preferences().unregisterOnSharedPreferenceChangeListener(page.listener);
             pages.remove(page);
             throw new IllegalStateException("Could not open plugin page", error);
         }
@@ -57,6 +67,7 @@ final class PluginPages {
         if (page.body != null) owner.discard(batch, page.body);
         NativeControls ui = new NativeControls(owner, batch);
         ArrayList<Integer> rows = new ArrayList<>();
+        page.keys.clear();
         page.content.render(new Controls(page, ui, rows, false));
         batch.children(page.container, PhoenixRender.integers(rows));
         page.body = ui;
@@ -91,14 +102,23 @@ final class PluginPages {
         @Override public void button(String label, Runnable action) {
             add(() -> ui.link(label, (event, payload) -> page.scope.guard(action)));
         }
+        @Override public void preferenceToggle(String label, String key, boolean fallback) {
+            page.keys.add(key);
+            android.content.SharedPreferences preferences = page.scope.preferences();
+            addToggle(label, preferences.getBoolean(key, fallback),
+                ignored -> preferences.edit().putBoolean(key, !preferences.getBoolean(key, fallback)).apply(), false);
+        }
         @Override public void toggle(String label, boolean checked, Consumer<Boolean> changed) {
+            addToggle(label, checked, changed, true);
+        }
+        private void addToggle(String label, boolean checked, Consumer<Boolean> changed, boolean redraw) {
             add(() -> {
                 int row = ui.node("view", "direction", "row", "align", "center", "gap", 12, "width", "fill");
                 int title = ui.node("view", "flex", 1, "direction", "column");
                 ui.batch.children(title, ui.label(label, 14, 500, ui.text));
                 ui.batch.children(row, title, ui.toggle(label, checked, (event, payload) -> {
                     page.scope.guard(() -> changed.accept(!checked));
-                    if (page.scope.active && page.body == ui) refresh(page);
+                    if (redraw && page.scope.active && page.body == ui) refresh(page);
                 }));
                 return row;
             });
@@ -142,6 +162,7 @@ final class PluginPages {
 
     private void close(Page page) {
         if (!pages.remove(page)) return;
+        page.scope.preferences().unregisterOnSharedPreferenceChangeListener(page.listener);
         if (page.registration != null) page.registration.close();
         try {
             PhoenixRender.Builder batch = owner.builder();
@@ -159,6 +180,7 @@ final class PluginPages {
     }
     void reset() {
         for (Page page : new ArrayList<>(pages)) {
+            page.scope.preferences().unregisterOnSharedPreferenceChangeListener(page.listener);
             pages.remove(page);
             page.root = null; page.body = null;
             if (page.registration != null) page.registration.close();
@@ -171,6 +193,9 @@ final class PluginPages {
         final PluginUi.Page content;
         NativeControls root, body;
         Registration registration;
+        final java.util.Set<String> keys = new java.util.HashSet<>();
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener listener;
+        boolean pending;
         int modal, container;
         Page(PluginScope scope, PluginUi.Page content) { this.scope = scope; this.content = content; }
     }
