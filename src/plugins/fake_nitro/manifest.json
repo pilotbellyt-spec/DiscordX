@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "fake_nitro",
+  "name": "FakeNitro",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Send custom emoji as Discord CDN image links.",
+  "entrypoint": "discordx.plugins.fake_nitro.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "before_send",
+    "ui.settings",
+    "gateway_json",
+    "chat.cache"
+  ]
+}

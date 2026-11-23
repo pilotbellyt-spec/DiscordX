@@ -76,7 +76,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                     && manager.entries.get("hide_typing").status == PluginManager.Status.DISABLED,
                 "Existing outgoing typing preference migrates to GhostMode only");
             manager.disableAll();
-            check(manager.entries.size() == 16, "Sixteen independently packaged built-ins discovered");
+            check(manager.entries.size() == 18, "Eighteen independently packaged built-ins discovered");
             for (PluginManager.Entry entry : new java.util.ArrayList<>(manager.entries.values())) {
                 manager.toggle(entry);
                 check(entry.status == PluginManager.Status.RUNNING, "Loaded built-in: " + entry.pack.id + " " + entry.error);
@@ -201,8 +201,23 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
                 check(other.equals(body(index, other)) && empty.equals(body(channel + "messages", empty)),
                     "Quick Jump preserves command-name collisions and unrelated responses");
                 break;
+            case "fake_nitro":
+                String emoji = "<a:party:123456789012345678>";
+                String rewritten = ChatSubmission.apply(manager, "hi " + emoji);
+                check(rewritten.equals("hi https://cdn.discordapp.com/emojis/123456789012345678.gif?size=128")
+                        && ("`" + emoji + "`").equals(ChatSubmission.apply(manager, "`" + emoji + "`")),
+                    "FakeNitro converts animated emoji to ordinary links and preserves inline code");
+                break;
+            case "clean_links":
+                check("See [post](https://example.org/post?id=2).".equals(ChatSubmission.apply(manager,
+                    "See [post](https://example.org/post?id=2&utm_source=chat).")), "Clean Links preserves Markdown destinations");
+                break;
+            case "plugin_example":
+                check(manager.chatButtons.size() == 2 && manager.commands.size() == 1 && manager.accessories.size() == 1
+                    && "the".equals(ChatSubmission.apply(manager, "teh")), "Developer example registers scoped contributions");
+                break;
             case "translate":
-                check(manager.messageActions.size() == 1 && manager.settings.size() == 1, "Translate registers message action and language setting");
+                check(manager.messageActions.size() == 1 && manager.settings.size() == 1 && manager.accessories.size() == 1 && manager.hooks.has(Hooks.GATEWAY_JSON), "Translate registers manual and channel translation");
                 break;
         }
     }
@@ -236,7 +251,7 @@ public final class PluginRuntimeTestInstrumentation extends Instrumentation {
             }
             PluginManager reloaded = new PluginManager(target);
             reloaded.initializeOnce();
-            check(reloaded.entries.size() == 16, "Installed package selection persists across manager restart");
+            check(reloaded.entries.size() == 18, "Installed package selection persists across manager restart");
             manager.main.postDelayed(() -> {
                 try { check(!manager.preferences(example.info.id).getBoolean("async", true), "Managed asynchronous callbacks cannot run after disable"); finishReport(null); }
                 catch (Throwable error) { finishReport(error); }

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "clean_links",
   "name": "Clean Links",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "DiscordX",
-  "description": "Remove tracking parameters from opened web links.",
+  "description": "Remove tracking parameters from opened links and new chat messages.",
   "entrypoint": "discordx.plugins.clean_links.Plugin",
   "minApi": 1,
   "maxApi": 1,
@@ -12,6 +12,8 @@
     356207
   ],
   "requires": [
-    "open_link"
+    "open_link",
+    "before_send",
+    "gateway_json"
   ]
 }

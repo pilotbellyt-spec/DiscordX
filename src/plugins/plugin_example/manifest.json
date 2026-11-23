@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "plugin_example",
+  "name": "Plugin Example",
+  "version": "1.0.0",
+  "author": "DiscordX",
+  "description": "Demonstrate local replies, chat buttons, message actions, and settings.",
+  "entrypoint": "discordx.plugins.plugin_example.Plugin",
+  "minApi": 1,
+  "maxApi": 1,
+  "discordBuilds": [
+    356207
+  ],
+  "requires": [
+    "ui.settings",
+    "ui.profile_actions",
+    "ui.message_actions",
+    "chat.commands",
+    "chat.buttons",
+    "chat.accessories",
+    "chat.local_messages",
+    "chat.local_replies",
+    "chat.cache",
+    "gateway_json",
+    "before_send"
+  ]
+}

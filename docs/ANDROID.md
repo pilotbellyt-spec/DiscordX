@@ -15,7 +15,7 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **MessageLogger** shows earlier versions below the current message and retains supported single deletions in chat. It tracks text received or loaded while enabled, including DMs. History stays in memory. Multiple-message bulk deletes use Phoenix's normal behavior.
 - **Custom Themes** applies local background, text, and accent colors through the Android renderer. Open **Edit palette** in its settings. Applying a palette or disabling the plugin recreates the activity. Discord's theme catalog is separate.
 - **ReviewDB** adds **Reviews** to supported profiles. Browse public reviews, avatars, and scores. Sign in to vote, post/edit/delete your review, report reviews, or block reviewers. The login is held in memory and cleared when the plugin stops or the process ends.
-- **Clean Links** removes recognized tracking parameters from opened web links. Other parameters and fragments remain. Recognized authentication and signed links are preserved.
+- **Clean Links** removes recognized tracking parameters from opened web links and links in new outgoing and incoming messages. Other parameters and fragments remain. Recognized authentication and signed links are preserved.
 - **Clean Copied Links** applies the same cleaner to copied single URLs. Other copied text is preserved.
 - **Open in Browser** sends eligible HTTP/HTTPS links to the default browser. Recognized authentication routes retain the original intent handling.
 - **Reduce Motion** combines its preference with Android's system preference. Reopen the window if Phoenix cached its motion setting.
@@ -26,8 +26,10 @@ Reload stops and restarts a plugin. Imports can be removed; built-ins can be dis
 - **GhostMode** suppresses your outgoing typing notifications. An existing enabled HideTyping 1.x bundled installation migrates to GhostMode.
 - **DeArrow** replaces eligible YouTube embed titles and thumbnails with community branding. It sends video IDs to DeArrow. Additional uncached videos in a batch may update when the messages load again.
 - **MessageLatency** shows the delay between a message nonce and its server ID for delays of 2 to under 120 seconds. Messages without a timestamp-bearing nonce have no label.
-- **NoProfileThemes** removes profile accent and theme colors locally.
-- **Translate** adds a message action that sends the selected message to Google Translate. Set the target language code in plugin settings. It defaults to the device language.
+- **NoProfileThemes** removes profile colors, effects, avatar decorations, and display name styles locally. Enable **Keep my own profile appearance** to preserve your own cosmetics.
+- **Translate** adds a message action that sends the selected message to Google Translate. Set the target language code in plugin settings. It defaults to the device language. For automatic translation of new messages, enter explicit channel IDs in settings. Messages in those channels are sent to Google and translations appear below the original content.
+- **FakeNitro** shares custom emoji as normal PNG or GIF links. It recognizes explicit Discord emoji markup and unique `:name:` shortcodes from cached server emoji.
+- **Plugin Example** demonstrates buttons, local replies, message annotations, profile actions, a local echo command, and configurable message transformations.
 
 Each built-in is a separate DEX ZIP under `src/plugins/`. See the [plugin API](PLUGIN_API.md).
 

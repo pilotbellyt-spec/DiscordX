@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "no_profile_themes",
   "name": "NoProfileThemes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "DiscordX",
-  "description": "Use the default colors on user profiles.",
+  "description": "Remove profile colors, effects, avatar decorations, and display name styles.",
   "entrypoint": "discordx.plugins.no_profile_themes.Plugin",
   "minApi": 1,
   "maxApi": 1,
@@ -12,6 +12,8 @@
     356207
   ],
   "requires": [
-    "http_body"
+    "http_body",
+    "gateway_json",
+    "ui.settings"
   ]
 }
